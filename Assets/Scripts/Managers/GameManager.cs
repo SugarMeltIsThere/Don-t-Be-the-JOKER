@@ -8,6 +8,7 @@ public enum GamePhase
     AceSelection,
     CardReveal,
     Betting,
+    ItemDiscard,  // 추가
     RoundEnd,
     GameEnd
 }
@@ -35,10 +36,14 @@ public class GameManager : MonoBehaviour
 
     public IReadOnlyList<CardSlot> GetPlayer2Cards()
         => _player2Hand?.Cards;
+    public Item PendingItem => _pendingItem;
+    public ActivePlayer PendingItemPlayer => _pendingItemPlayer;
 
     private Deck _deck;
     private PlayerHand _player1Hand;
     private PlayerHand _player2Hand;
+    private Character _player1Character = null;
+    private Character _player2Character = null;
     private Card _sharedCard;
 
     private int _player1Chips = 40;
@@ -46,6 +51,36 @@ public class GameManager : MonoBehaviour
     private int _pot = 0;
     private int _player1TotalBet = 0;
     private int _player2TotalBet = 0;
+    private int _player1LoseStreak = 0;
+    private int _player2LoseStreak = 0;
+
+    private const int DefaultItemSlots = 2;
+    private const int KingItemSlots = 3;
+
+    // 각 플레이어 슬롯 크기
+    private int _player1ItemSlots = DefaultItemSlots;
+    private int _player2ItemSlots = DefaultItemSlots;
+
+    private Item _pendingItem = null;
+    private ActivePlayer _pendingItemPlayer = ActivePlayer.None;
+    private ActivePlayer _lastWinner = ActivePlayer.None;
+    private bool _isFirstRound = true;
+    private ActivePlayer _lastLoser = ActivePlayer.None;
+
+    // UI 표시용
+    public int Player1ItemSlots => _player1ItemSlots;
+    public int Player2ItemSlots => _player2ItemSlots;
+    public CharacterType? Player1Character => _player1Character?.Type;
+    public CharacterType? Player2Character => _player2Character?.Type;
+
+    private List<Item> _player1Items = new List<Item>();
+    private List<Item> _player2Items = new List<Item>();
+    private bool _isMagnifierActive = false;
+
+    // UI 표시용
+    public IReadOnlyList<Item> Player1Items => _player1Items;
+    public IReadOnlyList<Item> Player2Items => _player2Items;
+    public bool IsMagnifierActive => _isMagnifierActive;
 
     private bool _isFirstBet = true;
     private ActivePlayer _bettingFirst;
@@ -112,24 +147,115 @@ public class GameManager : MonoBehaviour
 
     private void Start()
     {
-        StartNewRound(includeJoker: false);
+        _player1Chips = 40;
+        _player2Chips = 40;
+        _pot = 0;
+        _player1LoseStreak = 0;
+        _player2LoseStreak = 0;
+        _player1Items.Clear();
+        _player2Items.Clear();
+        _player1ItemSlots = DefaultItemSlots;
+        _player2ItemSlots = DefaultItemSlots;
+        _isFirstRound = true;
+        _lastLoser = ActivePlayer.None;
+
+        SetCharacter(ActivePlayer.Player1, CharacterType.Jack);
+        SetCharacter(ActivePlayer.Player2, CharacterType.Joker);
+        
+
+        // 게임 시작 시 덱 한 번만 생성
+        _deck = new Deck(includeJoker: false);
+        _deck.Shuffle();
+        //덱생성 후 능력 발동해야 조커 능력 발동 가능
+        ApplyCharacterAbilities();
+        StartNewRound();
     }
-
-    public void StartNewRound(bool includeJoker)
+    private void ApplyCharacterAbilities()
     {
+        _player1Character?.OnGameStart(this, ActivePlayer.Player1);
+        _player2Character?.OnGameStart(this, ActivePlayer.Player2);
+    }
+    public void RestartGame()
+    {
+        _player1Chips = 40;
+        _player2Chips = 40;
+        _pot = 0;
+        _player1LoseStreak = 0;
+        _player2LoseStreak = 0;
+        _player1Items.Clear();
+        _player2Items.Clear();
+        _player1ItemSlots = DefaultItemSlots;
+        _player2ItemSlots = DefaultItemSlots;
+        _isFirstRound = true;
+        _lastLoser = ActivePlayer.None;
 
-        if (CurrentPhase == GamePhase.GameEnd)
-        {
-            _player1Chips = 40;
-            _player2Chips = 40;
-            _pot = 0;
-        }
+        ApplyCharacterAbilities();
 
-        UIManager.Instance?.HideGameEndPanel();
-        _deck = new Deck(includeJoker);
+        // 재시작 시 덱 새로 생성
+        _deck = new Deck(includeJoker: false);
         _deck.Shuffle();
 
-        _sharedCard = _deck.Draw();
+        StartNewRound();
+    }
+    public void SetCharacter(ActivePlayer player, CharacterType type)
+    {
+        Character character = type switch
+        {
+            CharacterType.King => new KingCharacter(),
+            CharacterType.Queen => new QueenCharacter(),
+            CharacterType.Jack => new JackCharacter(),
+            CharacterType.Joker => new JokerCharacter(),
+            _ => null
+        };
+
+        if (player == ActivePlayer.Player1)
+            _player1Character = character;
+        else
+            _player2Character = character;
+
+        Debug.Log($"[캐릭터 선택] {player} / {type}");
+    }
+
+    // 킹 능력 - 아이템 슬롯 증가
+    public void SetItemSlots(ActivePlayer player, int slots)
+    {
+        if (player == ActivePlayer.Player1)
+            _player1ItemSlots = slots;
+        else
+            _player2ItemSlots = slots;
+    }
+
+    // 퀸 능력 - 칩 추가
+    public void AddChips(ActivePlayer player, int amount)
+    {
+        if (player == ActivePlayer.Player1)
+            _player1Chips += amount;
+        else
+            _player2Chips += amount;
+    }
+
+    // 조커 능력 - 덱에 조커 삽입
+    public void InsertJokerCard()
+    {
+        _deck.InsertJoker();
+    }
+
+    public void StartNewRound()
+    {
+        UIManager.Instance?.HideGameEndPanel();
+
+        // 덱이 부족하면 리셔플
+        if (_deck == null || _deck.Count < 10)
+        {
+            _deck = new Deck(includeJoker: false);
+            _deck.Shuffle();
+            Debug.Log("[덱 리셔플]");
+        }
+
+        do
+        {
+            _sharedCard = _deck.Draw();
+        } while (_sharedCard.Rank == Rank.Joker);
         Debug.Log($"[공유카드] {_sharedCard}");
 
         _player1Hand = new PlayerHand(_sharedCard);
@@ -153,11 +279,22 @@ public class GameManager : MonoBehaviour
         CurrentPhase = GamePhase.Draw;
         Debug.Log($"[드로우 단계 시작] 선공: {CurrentPlayer}");
 
+        _isFirstRound = false;
+
         RefreshUI();
     }
 
     private void DetermineFirstTurn()
     {
+        if (!_isFirstRound && _lastLoser != ActivePlayer.None)
+        {
+            CurrentPlayer = _lastLoser;
+            _bettingFirst = _lastLoser;
+            Debug.Log($"[선공결정] 이전 라운드 패자 → {CurrentPlayer}");
+            return;
+        }
+
+        // 첫 라운드만 카드 뽑기
         List<Card> turnDeck = new List<Card>(10);
         for (Rank rank = Rank.Ace; rank <= Rank.Ten; rank++)
             turnDeck.Add(new Card(rank, Suit.Spade));
@@ -180,7 +317,6 @@ public class GameManager : MonoBehaviour
             : ActivePlayer.Player2;
 
         _bettingFirst = CurrentPlayer;
-
         Debug.Log($"[선공결정] P1: {p1Card} / P2: {p2Card} → {CurrentPlayer}");
     }
 
@@ -502,9 +638,28 @@ public class GameManager : MonoBehaviour
 
     private void SettleChips(ActivePlayer winner)
     {
+        _lastWinner = winner;
+        if (winner == ActivePlayer.Player1)
+        {
+            _lastLoser = ActivePlayer.Player2;
+            _player1LoseStreak = 0;
+            _player2LoseStreak++;
+            CheckAndGiveItem(ActivePlayer.Player2);
+        }
+        else if (winner == ActivePlayer.Player2)
+        {
+            _lastLoser = ActivePlayer.Player1;
+            _player2LoseStreak = 0;
+            _player1LoseStreak++;
+            CheckAndGiveItem(ActivePlayer.Player1);
+        }
+
+        // ItemDiscard 페이즈면 여기서 멈춤
+        if (CurrentPhase == GamePhase.ItemDiscard) return;
+
+        // 칩 정산
         if (winner == ActivePlayer.None)
         {
-            // 무승부 → 팟 유지하고 다음 라운드로
             Debug.Log($"[무승부] 팟 {_pot}개 보류");
         }
         else if (winner == ActivePlayer.Player1)
@@ -520,7 +675,6 @@ public class GameManager : MonoBehaviour
             Debug.Log($"[P2 승리] P1: {_player1Chips} / P2: {_player2Chips}");
         }
 
-        // 게임 종료 체크
         if (_player1Chips <= 0 || _player2Chips <= 0)
         {
             CurrentPhase = GamePhase.GameEnd;
@@ -528,23 +682,65 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        StartNewRound(includeJoker: false);
+        StartNewRound();
+    }
+
+    private void CheckAndGiveItem(ActivePlayer player)
+    {
+        int streak = player == ActivePlayer.Player1
+            ? _player1LoseStreak
+            : _player2LoseStreak;
+
+        Debug.Log($"[연패 체크] {player} / {streak}연패");
+
+        if (streak % 2 != 0 || streak == 0) return;
+
+        ItemType[] items = { ItemType.Magnifier, ItemType.Flash, ItemType.Bribe };
+        ItemType random = items[_random.Next(items.Length)];
+
+        List<Item> inventory = player == ActivePlayer.Player1
+            ? _player1Items
+            : _player2Items;
+
+        int slots = player == ActivePlayer.Player1
+            ? _player1ItemSlots
+            : _player2ItemSlots;
+
+        Debug.Log($"[슬롯 체크] {player} / {inventory.Count}/{slots}");
+
+        if (inventory.Count < slots)
+        {
+            AddItem(player, random);
+        }
+        else
+        {
+            _pendingItem = new Item(random);
+            _pendingItemPlayer = player;
+            CurrentPhase = GamePhase.ItemDiscard;
+            Debug.Log($"[아이템 슬롯 가득] {player} / {random} 폐기 선택 필요");
+        }
     }
 
     private void HandleJokerDraw()
     {
         Debug.Log($"[조커] {CurrentPlayer} 조커 드로우 → 즉시 패배");
 
+        int penalty = 10;
+
         if (CurrentPlayer == ActivePlayer.Player1)
         {
-            _player1Chips -= 10;
-            _player2Chips += 10;
+            penalty = Mathf.Min(10, _player1Chips);
+            _player1Chips -= penalty;
+            _player2Chips += penalty;
         }
         else
         {
-            _player2Chips -= 10;
-            _player1Chips += 10;
+            penalty = Mathf.Min(10, _player2Chips);
+            _player2Chips -= penalty;
+            _player1Chips += penalty;
         }
+
+        Debug.Log($"[조커 패널티] {CurrentPlayer} 칩 {penalty}개 징수 / P1: {_player1Chips} / P2: {_player2Chips}");
 
         CurrentPhase = GamePhase.RoundEnd;
         CurrentPlayer = ActivePlayer.None;
@@ -556,7 +752,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        StartNewRound(includeJoker: false);
+        StartNewRound();
     }
 
     private PlayerHand GetCurrentHand()
@@ -597,4 +793,184 @@ public class GameManager : MonoBehaviour
 
         return sb.ToString().TrimEnd();
     }
+
+    // 돋보기
+    public Card OnUseMagnifier(ActivePlayer player)
+    {
+        if (CurrentPhase != GamePhase.Draw) return null;
+        if (CurrentPlayer != player) return null;
+        if (!HasItem(player, ItemType.Magnifier)) return null;
+
+        RemoveItem(player, ItemType.Magnifier);
+        _isMagnifierActive = true;
+
+        Card next = _deck.PeekTop();
+        Debug.Log($"[돋보기] {player} / 다음 카드: {next}");
+        return next;
+    }
+
+    // 뇌물
+    public bool OnUseBribe(ActivePlayer player)
+    {
+        if (CurrentPhase != GamePhase.Draw) return false;
+        if (CurrentPlayer != player) return false;
+        if (!HasItem(player, ItemType.Bribe)) return false;
+
+        PlayerHand hand = player == ActivePlayer.Player1
+            ? _player1Hand
+            : _player2Hand;
+
+        if (hand.Cards.Count == 0) return false;
+
+        Card newCard = _deck.Draw();
+        if (newCard == null) return false;
+
+        hand.ReplaceLastCard(newCard);
+        RemoveItem(player, ItemType.Bribe);
+
+        Debug.Log($"[거래] {player} / 마지막 카드 교체");
+        RefreshUI();
+        return true;
+    }
+
+    // 플래쉬
+    public bool OnUseFlash(ActivePlayer player)
+    {
+        if (CurrentPhase != GamePhase.Betting) return false;
+        if (CurrentPlayer != player) return false;
+        if (!HasItem(player, ItemType.Flash)) return false;
+
+        int steal = 3;
+
+        if (player == ActivePlayer.Player1)
+        {
+            steal = Mathf.Min(3, _player2Chips);
+            _player2Chips -= steal;
+            _player1Chips += steal;
+        }
+        else
+        {
+            steal = Mathf.Min(3, _player1Chips);
+            _player1Chips -= steal;
+            _player2Chips += steal;
+        }
+
+        RemoveItem(player, ItemType.Flash);
+        Debug.Log($"[플래쉬] {player} / {steal}개 탈취 / P1칩: {_player1Chips} / P2칩: {_player2Chips}");
+        RefreshUI();
+        return true;
+    }
+
+    // 아이템 보유 여부
+    private bool HasItem(ActivePlayer player, ItemType type)
+    {
+        List<Item> items = player == ActivePlayer.Player1
+            ? _player1Items
+            : _player2Items;
+
+        foreach (Item item in items)
+        {
+            if (item.Type == type) return true;
+        }
+        return false;
+    }
+
+    // 아이템 제거
+    private void RemoveItem(ActivePlayer player, ItemType type)
+    {
+        Character character = player == ActivePlayer.Player1
+            ? _player1Character
+            : _player2Character;
+
+        if (character != null && character.OnItemUsed(this, player))
+        {
+            Debug.Log($"[잭 능력] {player} 아이템 유지!");
+            return;
+        }
+
+        List<Item> items = player == ActivePlayer.Player1
+            ? _player1Items
+            : _player2Items;
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (items[i].Type == type)
+            {
+                items.RemoveAt(i);
+                return;
+            }
+        }
+    }
+
+    // 아이템 추가 (연패 시 획득)
+    public void AddItem(ActivePlayer player, ItemType type)
+    {
+        Character character = player == ActivePlayer.Player1
+            ? _player1Character
+            : _player2Character;
+
+        if (character?.Type == CharacterType.Joker)
+        {
+            Debug.Log($"[조커] {player} 아이템 획득 불가");
+            return;
+        }
+
+        List<Item> inventory = player == ActivePlayer.Player1
+            ? _player1Items
+            : _player2Items;
+
+        inventory.Add(new Item(type));
+        Debug.Log($"[아이템 획득] {player} / {type}");
+    }
+
+    public void OnItemDiscard(ActivePlayer player, int discardIndex)
+    {
+        if (CurrentPhase != GamePhase.ItemDiscard) return;
+        if (player != _pendingItemPlayer) return;
+
+        if (discardIndex >= 0)
+        {
+            List<Item> inventory = player == ActivePlayer.Player1
+                ? _player1Items
+                : _player2Items;
+
+            if (discardIndex >= inventory.Count) return;
+
+            inventory.RemoveAt(discardIndex);
+            inventory.Add(_pendingItem);
+            Debug.Log($"[아이템 교체] {player} / 인덱스 {discardIndex} 폐기 / {_pendingItem} 획득");
+        }
+        else
+        {
+            Debug.Log($"[아이템 폐기] {player} / 새 아이템 {_pendingItem} 폐기");
+        }
+
+        _pendingItem = null;
+        _pendingItemPlayer = ActivePlayer.None;
+
+        UIManager.Instance.HideItemDiscardPanel();
+
+        // 칩 정산 마저 처리
+        ActivePlayer winner = _lastWinner; // 승자 기록 필요
+        if (winner == ActivePlayer.Player1)
+        {
+            _player1Chips += _pot;
+            _pot = 0;
+        }
+        else
+        {
+            _player2Chips += _pot;
+            _pot = 0;
+        }
+
+        if (_player1Chips <= 0 || _player2Chips <= 0)
+        {
+            CurrentPhase = GamePhase.GameEnd;
+            return;
+        }
+
+        StartNewRound();
+    }
+
+
 }

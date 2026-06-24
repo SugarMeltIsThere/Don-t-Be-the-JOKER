@@ -1,5 +1,5 @@
 using System.Collections.Generic;
-
+using UnityEngine;
 public class Deck
 {
     private List<Card> _cards;
@@ -50,5 +50,18 @@ public class Deck
         Card card = _cards[_cards.Count - 1];   //List의 형식상 마지막 카드를 꺼내는 것이 더욱 효율적. Fisher Yates Shuffle 알고리즘으로 어디서 꺼내든 무작위성은 동일
         _cards.RemoveAt(_cards.Count - 1);
         return card;
+    }
+
+    public Card PeekTop()
+    {
+        if (_cards.Count == 0) return null;
+        return _cards[_cards.Count - 1];
+    }
+
+    public void InsertJoker()
+    {
+        int index = _random.Next(_cards.Count);
+        _cards.Insert(index, new Card(Rank.Joker, Suit.Spade));
+        Debug.Log($"[조커 삽입] 덱 내 랜덤 위치에 삽입");
     }
 }

@@ -109,4 +109,13 @@ public class PlayerHand
         }
         return total;
     }
+
+    public void ReplaceLastCard(Card newCard)
+    {
+        if (_cards.Count == 0) return;
+
+        _cards[_cards.Count - 1] = new CardSlot(newCard, isHidden: true);
+        IsBusted = GetTotal() > 21;
+        if (IsBusted) MustStand = true;
+    }
 }

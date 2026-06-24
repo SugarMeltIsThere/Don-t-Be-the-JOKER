@@ -57,11 +57,27 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Transform _p2AceButtonGroup;
     [SerializeField] private Button _p1AceConfirmButton;
     [SerializeField] private Button _p2AceConfirmButton;
+    
+    [Header("Item Slots")]
+    [SerializeField] private Button[] _p1ItemButtons;
+    [SerializeField] private Button[] _p2ItemButtons;
+    [SerializeField] private TextMeshProUGUI[] _p1ItemTexts;
+    [SerializeField] private TextMeshProUGUI[] _p2ItemTexts;
+
+    [Header("Item Discard UI")]
+    [SerializeField] private GameObject _itemDiscardPanel;
+    [SerializeField] private TextMeshProUGUI _newItemText;
+    [SerializeField] private Button _discardButton1;
+    [SerializeField] private Button _discardButton2;
+    [SerializeField] private Button _discardButton3;
+    [SerializeField] private Button _discardNewButton;
 
     [Header("Game End UI")]
     [SerializeField] private GameObject _gameEndPanel;
     [SerializeField] private TextMeshProUGUI _resultText;
     [SerializeField] private Button _restartButton;
+
+    private ActivePlayer _discardTargetPlayer = ActivePlayer.None;
 
     private int _p1RaiseAmount = 0;
     private int _p2RaiseAmount = 0;
@@ -111,16 +127,36 @@ public class UIManager : MonoBehaviour
         _p2RaiseConfirmButton.onClick.AddListener(() => ConfirmRaise(ActivePlayer.Player2));
         _p2CancelButton.onClick.AddListener(() => CloseRaisePanel(ActivePlayer.Player2));
 
+        _discardButton1.onClick.AddListener(() => GameManager.Instance.OnItemDiscard(_discardTargetPlayer, 0));
+        _discardButton2.onClick.AddListener(() => GameManager.Instance.OnItemDiscard(_discardTargetPlayer, 1));
+        _discardButton3.onClick.AddListener(() => GameManager.Instance.OnItemDiscard(_discardTargetPlayer, 2));
+        _discardNewButton.onClick.AddListener(() => GameManager.Instance.OnItemDiscard(_discardTargetPlayer, -1)); // -1 = 새 아이템 폐기
+
         _p1AceConfirmButton.onClick.AddListener(() => GameManager.Instance.OnAceSelectionConfirmed(ActivePlayer.Player1));
         _p2AceConfirmButton.onClick.AddListener(() => GameManager.Instance.OnAceSelectionConfirmed(ActivePlayer.Player2));
 
-        _restartButton.onClick.AddListener(() => GameManager.Instance.StartNewRound(includeJoker: false));
+        _restartButton.onClick.AddListener(() => GameManager.Instance.RestartGame());
+
+        for (int i = 0; i < _p1ItemButtons.Length; i++)
+        {
+            int index = i;
+            _p1ItemButtons[i].onClick.AddListener(()
+                => OnItemButtonClicked(ActivePlayer.Player1, index));
+        }
+
+        for (int i = 0; i < _p2ItemButtons.Length; i++)
+        {
+            int index = i;
+            _p2ItemButtons[i].onClick.AddListener(()
+                => OnItemButtonClicked(ActivePlayer.Player2, index));
+        }
     }
 
     private void Update()
     {
         Refresh();
         UpdatePhaseUI();
+        UpdateItemSlots();
     }
     private void Refresh()
     {
@@ -253,6 +289,9 @@ public class UIManager : MonoBehaviour
             case GamePhase.GameEnd:
                 ShowGameEndPanel();
                 break;
+            case GamePhase.ItemDiscard:
+                ShowItemDiscardPanel();
+                break;
         }
     }
 
@@ -364,5 +403,141 @@ public class UIManager : MonoBehaviour
     public void HideGameEndPanel()
     {
         _gameEndPanel.SetActive(false);
+    }
+
+    private void OnItemButtonClicked(ActivePlayer player, int index)
+    {
+        GameManager gm = GameManager.Instance;
+        var items = player == ActivePlayer.Player1
+            ? gm.Player1Items
+            : gm.Player2Items;
+
+        if (index >= items.Count) return;
+
+        ItemType type = items[index].Type;
+
+        switch (type)
+        {
+            case ItemType.Magnifier:
+                OnMagnifierClicked(player);
+                break;
+            case ItemType.Flash:
+                gm.OnUseFlash(player);
+                break;
+            case ItemType.Bribe:
+                gm.OnUseBribe(player);
+                break;
+        }
+    }
+
+    private void OnMagnifierClicked(ActivePlayer player)
+    {
+        Card next = GameManager.Instance.OnUseMagnifier(player);
+        if (next == null) return;
+
+        // 돋보기로 본 카드를 팝업으로 표시
+        // 지금은 로그로 대체
+        Debug.Log($"[돋보기 UI] 다음 카드: {next}");
+    }
+
+    private void UpdateItemSlots()
+    {
+        GameManager gm = GameManager.Instance;
+        if (gm == null) return;
+
+        UpdatePlayerItemSlots(
+            _p1ItemButtons,
+            _p1ItemTexts,
+            gm.Player1Items,
+            ActivePlayer.Player1);
+
+        UpdatePlayerItemSlots(
+            _p2ItemButtons,
+            _p2ItemTexts,
+            gm.Player2Items,
+            ActivePlayer.Player2);
+    }
+
+    private void UpdatePlayerItemSlots(
+        Button[] buttons,
+        TextMeshProUGUI[] texts,
+        IReadOnlyList<Item> items,
+        ActivePlayer player)
+    {
+        GameManager gm = GameManager.Instance;
+        bool isMyTurn = gm.CurrentPlayer == player;
+
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            if (i < items.Count)
+            {
+                // 아이템 있음
+                texts[i].text = items[i].GetName();
+                buttons[i].interactable = isMyTurn && CanUseItem(items[i].Type);
+            }
+            else
+            {
+                // 슬롯 비어있음
+                texts[i].text = "-";
+                buttons[i].interactable = false;
+            }
+        }
+    }
+
+    private bool CanUseItem(ItemType type)
+    {
+        GameManager gm = GameManager.Instance;
+        return type switch
+        {
+            ItemType.Magnifier => gm.CurrentPhase == GamePhase.Draw,
+            ItemType.Bribe => gm.CurrentPhase == GamePhase.Draw,
+            ItemType.Flash => gm.CurrentPhase == GamePhase.Betting,
+            _ => false
+        };
+    }
+
+    private void ShowItemDiscardPanel()
+    {
+        if (_itemDiscardPanel.activeSelf) return;
+
+        GameManager gm = GameManager.Instance;
+        _discardTargetPlayer = gm.PendingItemPlayer;
+
+        var items = _discardTargetPlayer == ActivePlayer.Player1
+            ? gm.Player1Items
+            : gm.Player2Items;
+
+        int slots = _discardTargetPlayer == ActivePlayer.Player1
+            ? gm.Player1ItemSlots
+            : gm.Player2ItemSlots;
+
+        _newItemText.text = $"New Item: {gm.PendingItem?.GetName()}";
+
+        _discardButton1.GetComponentInChildren<TextMeshProUGUI>().text
+            = $"Discard: {(items.Count > 0 ? items[0].GetName() : "-")}";
+        _discardButton2.GetComponentInChildren<TextMeshProUGUI>().text
+            = $"Discard: {(items.Count > 1 ? items[1].GetName() : "-")}";
+
+        // 킹 캐릭터면 3번째 슬롯 버튼 표시
+        if (slots >= 3)
+        {
+            _discardButton3.gameObject.SetActive(true);
+            _discardButton3.GetComponentInChildren<TextMeshProUGUI>().text
+                = $"Discard: {(items.Count > 2 ? items[2].GetName() : "-")}";
+        }
+        else
+        {
+            _discardButton3.gameObject.SetActive(false);
+        }
+
+        _discardNewButton.GetComponentInChildren<TextMeshProUGUI>().text
+            = $"Discard: {gm.PendingItem?.GetName()} (New)";
+
+        _itemDiscardPanel.SetActive(true);
+    }
+
+    public void HideItemDiscardPanel()
+    {
+        _itemDiscardPanel.SetActive(false);
     }
 }
