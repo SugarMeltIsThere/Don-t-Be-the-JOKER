@@ -39,6 +39,37 @@ MonoBehaviour:
   - DestroySpaceship
   - Fire
   - RespawnSpaceship
+  - RPC_RequestHit
+  - RPC_RequestStand
+  - RPC_SyncGamePhase
+  - RPC_ReceiveMyCard
+  - RPC_ReceiveSharedCard
+  - RPC_SyncFirstTurn
+  - RPC_SyncGameState
+  - RPC_SyncHitResult
+  - RPC_AceSelectionStart
+  - RPC_BettingStart
+  - RPC_GameEnd
+  - RPC_NextRound
+  - RPC_RequestAceConfirmed
+  - RPC_RequestAceValueChanged
+  - RPC_RequestCall
+  - RPC_RequestDie
+  - RPC_RequestRaise
+  - RPC_RoundEnd
+  - RPC_SyncInitialCard
+  - RPC_RoundReveal
+  - RPC_SyncAceConfirmed
+  - RPC_SyncAceValueChanged
+  - RPC_ItemDiscardStart
+  - RPC_RequestItemDiscard
+  - RPC_RequestUseBribe
+  - RPC_RequestUseFlash
+  - RPC_RequestUseMagnifier
+  - RPC_SyncBribeResult
+  - RPC_SyncItemState
+  - RPC_SyncMagnifierResult
+  - RPC_SyncJokerDraw
   DisableAutoOpenWizard: 1
   ShowSettings: 0
   DevRegionSetOnce: 0

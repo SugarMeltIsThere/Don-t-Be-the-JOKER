@@ -2,10 +2,10 @@ using System.Collections.Generic;
 
 public class CardSlot
 {
-    public Card Card {  get; init; }
+    public Card Card { get; init; }
     public bool IsHidden { get; set; }
 
-    public CardSlot (Card card, bool isHidden)
+    public CardSlot(Card card, bool isHidden)
     {
         Card = card;
         IsHidden = isHidden;
@@ -17,7 +17,7 @@ public class PlayerHand
     private Card _sharedCard;
     public IReadOnlyList<CardSlot> Cards => _cards;     //가변성의 내용물에 대한 접근을 막기 위해 private set 대산 IReadOnlyList 사용
     public bool IsBusted { get; private set; }
-    public bool  IsStanding { get; private set; }
+    public bool IsStanding { get; private set; }
     public bool MustStand { get; private set; }
     public bool AceSelectionConfirmed { get; private set; }
 
@@ -46,6 +46,13 @@ public class PlayerHand
     public void Stand()
     {
         IsStanding = true;
+    }
+
+    // 라운드 종료 시 숨겨져 있던 마지막 카드를 공개
+    public void RevealLastCard()
+    {
+        if (_cards.Count == 0) return;
+        _cards[_cards.Count - 1].IsHidden = false;
     }
 
     public void SetAceEleven(int cardIndex, bool isEleven)  //i번째 카드
@@ -91,7 +98,7 @@ public class PlayerHand
     {
         int total = _sharedCard.GetBlackjackValue();
 
-        for (int i = 0; i < _cards.Count-1; i++)
+        for (int i = 0; i < _cards.Count - 1; i++)
         {
             Card card = _cards[i].Card;
 
