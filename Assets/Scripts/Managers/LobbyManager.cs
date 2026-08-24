@@ -17,13 +17,20 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     [SerializeField] private GameObject _waitingPanel;
 
     [Header("Lobby UI")]
-    [SerializeField] private TMP_InputField _roomCodeInput;
-    [SerializeField] private Button _createButton;
-    [SerializeField] private Button _joinButton;
+    [SerializeField] private TMP_InputField _roomCodeInput; // 코드로 직접 입장할 때 사용
+    [SerializeField] private Button _createButton; // 방 생성 패널을 여는 버튼
+    [SerializeField] private Button _joinButton; // 코드로 직접 입장
     [SerializeField] private TMP_InputField _nicknameInput;
 
+    [Header("Create Room Panel")]
+    [SerializeField] private GameObject _createRoomPanel;
+    [SerializeField] private TMP_InputField _roomTitleInput;
+    [SerializeField] private Button _confirmCreateRoomButton;
+    [SerializeField] private Button _cancelCreateRoomButton;
+
     [Header("Waiting UI")]
-    [SerializeField] private TextMeshProUGUI _roomNameText;
+    [SerializeField] private TextMeshProUGUI _roomNameText; // 방 제목 전용
+    [SerializeField] private TextMeshProUGUI _roomCodeText; // 방 코드 전용 (별개 텍스트)
     [SerializeField] private TextMeshProUGUI _player1Text;
     [SerializeField] private TextMeshProUGUI _player2Text;
     [SerializeField] private Button _readyButton;
@@ -70,7 +77,9 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         _lobbyPanel.SetActive(false);
         _waitingPanel.SetActive(false);
 
-        _createButton.onClick.AddListener(OnCreateRoom);
+        _createButton.onClick.AddListener(() => _createRoomPanel.SetActive(true));
+        _confirmCreateRoomButton.onClick.AddListener(OnCreateRoom);
+        _cancelCreateRoomButton.onClick.AddListener(() => _createRoomPanel.SetActive(false));
         _joinButton.onClick.AddListener(OnJoinRoom);
         _readyButton.onClick.AddListener(OnReady);
         _startButton.onClick.AddListener(OnStartGame);
@@ -83,6 +92,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         _jokerButton.onClick.AddListener(() => OnCharacterSelected(CharacterType.Joker));
 
         _resultPanel.SetActive(false);
+        _createRoomPanel.SetActive(false);
 
         if (PhotonNetwork.InRoom)
         {
@@ -125,19 +135,26 @@ public class LobbyManager : MonoBehaviourPunCallbacks
             GameObject item = Instantiate(_roomItemPrefab, _roomListContent);
             Transform tf = item.transform;
 
+            // 화면엔 사용자가 지은 제목(RoomTitle)을 보여주고, 실제 조인은
+            // 뒤에서 고유 코드(room.Name)로 함 - 둘은 서로 다른 값
+            string title = room.CustomProperties != null &&
+                room.CustomProperties.TryGetValue("RoomTitle", out object titleObj)
+                ? titleObj as string
+                : room.Name; // 프로퍼티가 아직 안 왔을 때의 폴백
+
             tf.Find("RoomNameText").GetComponent<TextMeshProUGUI>().text
-                = room.Name;
+                = title;
             tf.Find("PlayerCountText").GetComponent<TextMeshProUGUI>().text
                 = $"{room.PlayerCount}/{room.MaxPlayers}";
 
             Button joinBtn = tf.Find("JoinButton").GetComponent<Button>();
             joinBtn.interactable = room.PlayerCount < room.MaxPlayers;
 
-            string roomName = room.Name;
+            string roomCode = room.Name; // 조인용 실제 식별자
             joinBtn.onClick.AddListener(() =>
             {
                 PhotonNetwork.NickName = _nicknameInput.text.Trim();
-                PhotonNetwork.JoinRoom(roomName);
+                PhotonNetwork.JoinRoom(roomCode);
             });
         }
     }
@@ -155,32 +172,55 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         _lobbyPanel.SetActive(true);
     }
 
+    private static readonly System.Random _codeRandom = new System.Random();
+
+    // 방 코드로 쓸 영어 대문자 6자리를 무작위로 생성.
+    // Photon 방의 실제 Name(고유 식별자)으로 쓰이고, 화면에 보이는 "방 이름"과는 별개
+    private static string GenerateRoomCode()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+        System.Text.StringBuilder sb = new System.Text.StringBuilder(4);
+        for (int i = 0; i < 4; i++)
+            sb.Append(chars[_codeRandom.Next(chars.Length)]);
+        return sb.ToString();
+    }
+
     private void OnCreateRoom()
     {
         string nickname = _nicknameInput.text.Trim();
-        string roomCode = _roomCodeInput.text.Trim().ToUpper();
+        string roomTitle = _roomTitleInput.text.Trim();
 
         if (string.IsNullOrEmpty(nickname))
         {
             ShowError("Please enter a nickname.");
             return;
         }
-        if (string.IsNullOrEmpty(roomCode))
+        if (string.IsNullOrEmpty(roomTitle))
         {
-            ShowError("Please enter a room code.");
+            ShowError("Please enter a room name.");
             return;
         }
 
         PhotonNetwork.NickName = nickname; // 닉네임 설정
 
+        string roomCode = GenerateRoomCode();
+
+        // 방 제목은 커스텀 프로퍼티로 저장. CustomRoomPropertiesForLobby에
+        // 명시적으로 등록해야 로비의 방 목록(OnRoomListUpdate)에서 이 값을
+        // 읽을 수 있음 - 빠뜨리면 방 목록에 제목이 하나도 안 보임
+        Hashtable customProps = new Hashtable { { "RoomTitle", roomTitle } };
+
         RoomOptions options = new RoomOptions
         {
             MaxPlayers = 2,
             IsVisible = true,
-            IsOpen = true
+            IsOpen = true,
+            CustomRoomProperties = customProps,
+            CustomRoomPropertiesForLobby = new string[] { "RoomTitle" }
         };
 
         PhotonNetwork.CreateRoom(roomCode, options);
+        _createRoomPanel.SetActive(false);
     }
 
     private void OnJoinRoom()
@@ -210,7 +250,16 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         _lobbyPanel.SetActive(false);
         _waitingPanel.SetActive(true);
 
-        _roomNameText.text = $"Room: {PhotonNetwork.CurrentRoom.Name}";
+        string title = PhotonNetwork.CurrentRoom.CustomProperties != null &&
+            PhotonNetwork.CurrentRoom.CustomProperties.TryGetValue("RoomTitle", out object titleObj)
+            ? titleObj as string
+            : null;
+
+        // 제목과 코드를 별개 텍스트로 분리해서 표시 (라벨 없이 값만)
+        _roomNameText.text = string.IsNullOrEmpty(title)
+            ? PhotonNetwork.CurrentRoom.Name
+            : title;
+        _roomCodeText.text = PhotonNetwork.CurrentRoom.Name;
 
         bool isHost = PhotonNetwork.IsMasterClient;
         _readyButton.gameObject.SetActive(!isHost);
@@ -264,12 +313,12 @@ public class LobbyManager : MonoBehaviourPunCallbacks
         var players = PhotonNetwork.PlayerList;
 
         _player1Text.text = players.Length > 0
-            ? $"Player 1: {players[0].NickName}"
-            : "Player 1: ";
+            ? players[0].NickName
+            : "";
 
         _player2Text.text = players.Length > 1
-            ? $"Player 2: {players[1].NickName}"
-            : "Player 2: Waiting...";
+            ? players[1].NickName
+            : "Waiting...";
     }
 
     private void OnReady()
@@ -292,7 +341,7 @@ public class LobbyManager : MonoBehaviourPunCallbacks
     private void OnCharacterSelected(CharacterType type)
     {
         _selectedCharacter = type;
-        _mySelectedCharacterText.text = $"Character: {type}";
+        _mySelectedCharacterText.text = type.ToString();
 
         Hashtable props = new Hashtable { { "Character", (int)type } };
         PhotonNetwork.LocalPlayer.SetCustomProperties(props);
@@ -434,6 +483,13 @@ public class LobbyManager : MonoBehaviourPunCallbacks
 
     public override void OnLeftRoom()
     {
+        // 에디터에서 Play를 멈추면 씬 오브젝트가 먼저 파괴된 뒤에
+        // Photon의 OnLeftRoom 콜백이 뒤늦게 도착할 수 있음. 이 경우
+        // this(LobbyManager 자신)나 참조 중인 패널이 이미 파괴된 상태라
+        // SetActive 호출 시 MissingReferenceException이 남 (실제 플레이
+        // 중 정상적으로 방을 나갈 때는 발생하지 않는, 에디터 종료 시점 한정 노이즈)
+        if (this == null || _waitingPanel == null || _lobbyPanel == null) return;
+
         Debug.Log("[로비] 방 나감");
         _waitingPanel.SetActive(false);
         _lobbyPanel.SetActive(true);

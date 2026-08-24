@@ -9,7 +9,6 @@ public class UIManager : MonoBehaviour
     public static UIManager Instance { get; private set; }
 
     [Header("P1 UI")]
-    [SerializeField] private TextMeshProUGUI _p1CardsText;
     [SerializeField] private TextMeshProUGUI _p1ChipsText;
     [SerializeField] private TextMeshProUGUI _p1TotalText;
     [SerializeField] private Button _p1HitButton;
@@ -29,17 +28,22 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button _p1CancelButton;
 
     [Header("P2 UI")]
-    [SerializeField] private TextMeshProUGUI _p2CardsText;
     [SerializeField] private TextMeshProUGUI _p2ChipsText;
     [SerializeField] private TextMeshProUGUI _p2TotalText;
 
     [Header("Shared UI")]
-    [SerializeField] private TextMeshProUGUI _sharedCardText;
     [SerializeField] private TextMeshProUGUI _potText;
     [SerializeField] private TextMeshProUGUI _myBetText;
     [SerializeField] private TextMeshProUGUI _opponentBetText;
     [SerializeField] private TextMeshProUGUI _myCharacterText;
     [SerializeField] private TextMeshProUGUI _opponentCharacterText;
+
+    [Header("Card Sprites")]
+    [SerializeField] private CardSpriteDatabase _cardSpriteDatabase;
+    [SerializeField] private Image _sharedCardImage;
+    [SerializeField] private Transform _myCardsContainer;
+    [SerializeField] private Transform _opponentCardsContainer;
+    [SerializeField] private GameObject _cardImagePrefab; // Image 컴포넌트가 붙은 프리팹
 
     [Header("Ace Selection UI")]
     [SerializeField] private GameObject _aceSelectionPanel;
@@ -47,10 +51,11 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button _p1AceConfirmButton;
 
     [Header("Item Slots")]
-    [SerializeField] private Button[] _p1ItemButtons;
-    [SerializeField] private Button[] _p2ItemButtons;
-    [SerializeField] private TextMeshProUGUI[] _p1ItemTexts;
-    [SerializeField] private TextMeshProUGUI[] _p2ItemTexts;
+    [SerializeField] private Button[] _myItemButtons; // 최대 슬롯 수(3)만큼 미리 만들어두고 필요한 만큼만 활성화
+    [SerializeField] private Image[] _opponentItemImages; // 마찬가지로 미리 만들어두는 풀
+    [SerializeField] private Sprite _magnifierSprite;
+    [SerializeField] private Sprite _flashSprite;
+    [SerializeField] private Sprite _bribeSprite;
 
     [Header("Item Discard UI")]
     [SerializeField] private GameObject _itemDiscardPanel;
@@ -116,10 +121,12 @@ public class UIManager : MonoBehaviour
 
         // (Game End 관련 버튼은 더 이상 GameScene에 없음)
 
-        for (int i = 0; i < _p1ItemButtons.Length; i++)
+        // 아이템 슬롯은 고정 개수(풀)라, 클릭 리스너를 여기서 한 번만
+        // 등록해두면 됨 - 매 프레임 다시 등록할 필요 없음
+        for (int i = 0; i < _myItemButtons.Length; i++)
         {
             int slotIndex = i;
-            _p1ItemButtons[i].onClick.AddListener(() =>
+            _myItemButtons[i].onClick.AddListener(() =>
             {
                 ActivePlayer localPlayer = NetworkGameManager.Instance != null
                     ? NetworkGameManager.Instance.LocalPlayer
@@ -152,9 +159,9 @@ public class UIManager : MonoBehaviour
             ? gm.Player2Chips
             : gm.Player1Chips;
 
-        _p1ChipsText.text = $"My Chips: {myChips}";
-        _p2ChipsText.text = $"Opponent Chips: {opponentChips}";
-        _potText.text = $"POT: {gm.Pot}";
+        _p1ChipsText.text = myChips.ToString();
+        _p2ChipsText.text = opponentChips.ToString();
+        _potText.text = gm.Pot.ToString();
 
         int myBet = localPlayer == ActivePlayer.Player1
             ? gm.Player1TotalBet
@@ -166,12 +173,69 @@ public class UIManager : MonoBehaviour
 
         // 인스펙터 미연결 대비 방어 코드 (예전 캐릭터 텍스트 NRE 사고 재발 방지)
         if (_myBetText != null)
-            _myBetText.text = $"My Bet: {myBet}";
+            _myBetText.text = myBet.ToString();
 
         if (_opponentBetText != null)
-            _opponentBetText.text = $"Opponent Bet: {opponentBet}";
+            _opponentBetText.text = opponentBet.ToString();
+
+        RefreshCardImages(gm, localPlayer);
 
         UpdateButtons(gm);
+    }
+
+    // 카드 텍스트 대신 실제 스프라이트로 표시. 다른 폴링 로직들과 마찬가지로
+    // 매 프레임 GameManager의 현재 상태를 그대로 읽어와 그리기 때문에,
+    // 별도의 푸시 갱신 없이도 항상 최신 상태를 반영함
+    private void RefreshCardImages(GameManager gm, ActivePlayer localPlayer)
+    {
+        if (_cardSpriteDatabase == null) return;
+
+        if (_sharedCardImage != null && gm.SharedCard != null)
+            _sharedCardImage.sprite = _cardSpriteDatabase.GetSprite(gm.SharedCard);
+
+        var myCards = localPlayer == ActivePlayer.Player1
+            ? gm.GetPlayer1Cards()
+            : gm.GetPlayer2Cards();
+
+        var opponentCards = localPlayer == ActivePlayer.Player1
+            ? gm.GetPlayer2Cards()
+            : gm.GetPlayer1Cards();
+
+        RenderCardRow(_myCardsContainer, myCards, isMine: true);
+        RenderCardRow(_opponentCardsContainer, opponentCards, isMine: false);
+    }
+
+    // 컨테이너 자식(카드 이미지) 개수를 실제 카드 수에 맞춰 늘리거나 줄이고,
+    // 각 슬롯에 맞는 스프라이트(공개/숨김)를 채워넣음
+    private void RenderCardRow(Transform container, IReadOnlyList<CardSlot> cards, bool isMine)
+    {
+        if (container == null || cards == null) return;
+
+        // Destroy()는 이번 프레임 끝에 지워지도록 "예약"만 할 뿐, 호출 직후에도
+        // childCount가 그대로라서 while(container.childCount > cards.Count) 형태로
+        // 짜면 조건이 절대 거짓이 안 되어 무한 루프에 빠짐(유니티 자체가 멈춤).
+        // 그래서 개수 차이를 미리 한 번만 계산해두고, 그 횟수만큼만 반복함
+        int currentCount = container.childCount;
+        int targetCount = cards.Count;
+
+        for (int i = currentCount; i < targetCount; i++)
+            Instantiate(_cardImagePrefab, container);
+
+        for (int i = currentCount - 1; i >= targetCount; i--)
+            Destroy(container.GetChild(i).gameObject);
+
+        for (int i = 0; i < cards.Count; i++)
+        {
+            Image img = container.GetChild(i).GetComponent<Image>();
+            if (img == null) continue;
+
+            CardSlot slot = cards[i];
+            bool showBack = slot.IsHidden && !isMine;
+
+            img.sprite = showBack
+                ? _cardSpriteDatabase.CardBackSprite
+                : _cardSpriteDatabase.GetSprite(slot.Card);
+        }
     }
 
     private void UpdateButtons(GameManager gm)
@@ -206,40 +270,35 @@ public class UIManager : MonoBehaviour
         // 인해 이걸 호출한 GameManager.InitializeGame()의 나머지 로직,
         // 특히 StartNewRound()까지 통째로 못 도는 사고를 막기 위한 방어 코드
         if (_myCharacterText != null)
-            _myCharacterText.text = $"My Character: {myCharacter}";
+            _myCharacterText.text = myCharacter;
 
         if (_opponentCharacterText != null)
-            _opponentCharacterText.text = $"Opponent Character: {opponentCharacter}";
+            _opponentCharacterText.text = opponentCharacter;
     }
 
-    public void RefreshCards(
-    string sharedCard,
-    string p1Cards, string p1Total,
-    string p2Cards, string p2Total)
+    // 카드 자체는 이제 RefreshCardImages()가 매 프레임 폴링으로 그리므로,
+    // 여기서는 합계 텍스트만 처리 (합계는 숫자라 이미지가 아닌 텍스트가 적합)
+    public void RefreshCards(string p1Total, string p2Total)
     {
         ActivePlayer localPlayer = NetworkGameManager.Instance != null
             ? NetworkGameManager.Instance.LocalPlayer
             : ActivePlayer.Player1;
 
-        string myCards, opponentCards;
         string myTotal, opponentTotal;
 
         if (localPlayer == ActivePlayer.Player1)
         {
-            myCards = p1Cards; myTotal = p1Total;
-            opponentCards = p2Cards; opponentTotal = p2Total;
+            myTotal = p1Total;
+            opponentTotal = p2Total;
         }
         else
         {
-            myCards = p2Cards; myTotal = p2Total;
-            opponentCards = p1Cards; opponentTotal = p1Total;
+            myTotal = p2Total;
+            opponentTotal = p1Total;
         }
 
-        _sharedCardText.text = $"Shared Card: {sharedCard}";
-        _p1CardsText.text = $"My Cards: {myCards}";
-        _p1TotalText.text = $"My Total: {myTotal}";
-        _p2CardsText.text = $"Opponent Cards: {opponentCards}";
-        _p2TotalText.text = $"Opponent Total: {opponentTotal}";
+        _p1TotalText.text = myTotal;
+        _p2TotalText.text = opponentTotal;
     }
 
     private void OpenRaisePanel(ActivePlayer player)
@@ -355,7 +414,7 @@ public class UIManager : MonoBehaviour
             GameObject textObj = new GameObject("Text");
             textObj.transform.SetParent(btnObj.transform, false);
             var tmp = textObj.AddComponent<TMPro.TextMeshProUGUI>();
-            tmp.text = "Ace: 1";
+            tmp.text = "1";
             tmp.fontSize = 20;
             tmp.alignment = TMPro.TextAlignmentOptions.Center;
             tmp.color = Color.black;
@@ -370,7 +429,7 @@ public class UIManager : MonoBehaviour
             btn.onClick.AddListener(() =>
             {
                 isEleven = !isEleven;
-                tmp.text = $"Ace: {(isEleven ? 11 : 1)}";
+                tmp.text = (isEleven ? 11 : 1).ToString();
 
                 if (NetworkGameManager.Instance != null)
                     NetworkGameManager.Instance.RequestAceValueChanged(localPlayer, index, isEleven);
@@ -516,35 +575,56 @@ public class UIManager : MonoBehaviour
             ? gm.Player1Items
             : gm.Player2Items;
 
-        // 내 슬롯: 사용 가능
-        UpdatePlayerItemSlots(_p1ItemButtons, _p1ItemTexts, myItems, localPlayer, isMine: true);
+        bool isMyTurn = gm.CurrentPlayer == localPlayer;
 
-        // 상대 슬롯: 보기만 가능
-        UpdatePlayerItemSlots(_p2ItemButtons, _p2ItemTexts, opponentItems, opponent, isMine: false);
-    }
-    private void UpdatePlayerItemSlots(
-        Button[] buttons,
-        TextMeshProUGUI[] texts,
-        IReadOnlyList<Item> items,
-        ActivePlayer player,
-        bool isMine)
-    {
-        GameManager gm = GameManager.Instance;
-        bool isMyTurn = isMine && gm.CurrentPlayer == player;
-
-        for (int i = 0; i < buttons.Length; i++)
+        // 내 아이템: 버튼 풀 - 있는 만큼만 켜고 스프라이트/상호작용 갱신
+        for (int i = 0; i < _myItemButtons.Length; i++)
         {
-            if (i < items.Count)
+            Button button = _myItemButtons[i];
+
+            if (i < myItems.Count)
             {
-                texts[i].text = items[i].GetName();
-                buttons[i].interactable = isMine && isMyTurn && CanUseItem(items[i].Type);
+                ItemType type = myItems[i].Type;
+
+                button.gameObject.SetActive(true);
+                button.interactable = isMyTurn && CanUseItem(type);
+
+                Image image = button.GetComponent<Image>();
+                if (image != null)
+                    image.sprite = GetItemSprite(type);
             }
             else
             {
-                texts[i].text = "-";
-                buttons[i].interactable = false;
+                button.gameObject.SetActive(false);
             }
         }
+
+        // 상대 아이템: 이미지 풀 - 클릭 리스너 자체가 없음
+        for (int i = 0; i < _opponentItemImages.Length; i++)
+        {
+            Image image = _opponentItemImages[i];
+
+            if (i < opponentItems.Count)
+            {
+                image.gameObject.SetActive(true);
+                image.sprite = GetItemSprite(opponentItems[i].Type);
+            }
+            else
+            {
+                image.gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private Sprite GetItemSprite(ItemType type)
+    {
+        return type switch
+        {
+            ItemType.Magnifier => _magnifierSprite,
+            ItemType.Flash => _flashSprite,
+            ItemType.Bribe => _bribeSprite,
+            _ => null
+        };
     }
 
     private bool CanUseItem(ItemType type)
@@ -597,19 +677,19 @@ public class UIManager : MonoBehaviour
             ? gm.Player1ItemSlots
             : gm.Player2ItemSlots;
 
-        _newItemText.text = $"New Item: {gm.PendingItem?.GetName()}";
+        _newItemText.text = gm.PendingItem?.GetName();
 
         _discardButton1.GetComponentInChildren<TextMeshProUGUI>().text
-            = $"Discard: {(items.Count > 0 ? items[0].GetName() : "-")}";
+            = items.Count > 0 ? items[0].GetName() : "-";
         _discardButton2.GetComponentInChildren<TextMeshProUGUI>().text
-            = $"Discard: {(items.Count > 1 ? items[1].GetName() : "-")}";
+            = items.Count > 1 ? items[1].GetName() : "-";
 
         // 킹 캐릭터면 3번째 슬롯 버튼 표시
         if (slots >= 3)
         {
             _discardButton3.gameObject.SetActive(true);
             _discardButton3.GetComponentInChildren<TextMeshProUGUI>().text
-                = $"Discard: {(items.Count > 2 ? items[2].GetName() : "-")}";
+                = items.Count > 2 ? items[2].GetName() : "-";
         }
         else
         {
@@ -617,7 +697,7 @@ public class UIManager : MonoBehaviour
         }
 
         _discardNewButton.GetComponentInChildren<TextMeshProUGUI>().text
-            = $"Discard: {gm.PendingItem?.GetName()} (New)";
+            = $"{gm.PendingItem?.GetName()} (New)";
 
         _itemDiscardPanel.SetActive(true);
     }
@@ -644,6 +724,9 @@ public class UIManager : MonoBehaviour
     }
     private void OnCallClicked()
     {
+        // 레이즈 패널을 연 채로 콜/다이를 누르면 패널이 안 닫히던 버그 수정
+        CloseRaisePanel(ActivePlayer.Player1);
+
         if (NetworkGameManager.Instance != null)
             NetworkGameManager.Instance.RequestCall();
         else
@@ -652,6 +735,9 @@ public class UIManager : MonoBehaviour
 
     private void OnDieClicked()
     {
+        // 레이즈 패널을 연 채로 콜/다이를 누르면 패널이 안 닫히던 버그 수정
+        CloseRaisePanel(ActivePlayer.Player1);
+
         if (NetworkGameManager.Instance != null)
             NetworkGameManager.Instance.RequestDie();
         else

@@ -1178,11 +1178,10 @@ public class GameManager : MonoBehaviour
             ? NetworkGameManager.Instance.LocalPlayer
             : ActivePlayer.Player1;
 
+        // 카드 자체는 UIManager가 매 프레임 직접 조회해서 스프라이트로 그리므로,
+        // 여기서는 합계 텍스트만 넘김
         UIManager.Instance.RefreshCards(
-            sharedCard: _sharedCard?.ToString() ?? "-",
-            p1Cards: GetCardsText(_player1Hand, isMine: localPlayer == ActivePlayer.Player1),
             p1Total: GetTotalText(_player1Hand, isMine: localPlayer == ActivePlayer.Player1),
-            p2Cards: GetCardsText(_player2Hand, isMine: localPlayer == ActivePlayer.Player2),
             p2Total: GetTotalText(_player2Hand, isMine: localPlayer == ActivePlayer.Player2)
         );
     }
@@ -1202,27 +1201,6 @@ public class GameManager : MonoBehaviour
             return $"{hand.GetVisibleTotal()}+?";
 
         return hand.GetTotal().ToString();
-    }
-
-    // isMine이 true면(내 패면) 숨김 여부와 상관없이 전부 공개,
-    // false면(상대 패면) 기존처럼 마지막 카드를 "?"로 표시
-    private string GetCardsText(PlayerHand hand, bool isMine)
-    {
-        if (hand == null) return "-";
-
-        System.Text.StringBuilder sb = new System.Text.StringBuilder();
-
-        for (int i = 0; i < hand.Cards.Count; i++)
-        {
-            CardSlot slot = hand.Cards[i];
-
-            if (slot.IsHidden && !isMine)
-                sb.Append("? ");
-            else
-                sb.Append($"{slot.Card} ");
-        }
-
-        return sb.ToString().TrimEnd();
     }
 
     // ===================================================================
