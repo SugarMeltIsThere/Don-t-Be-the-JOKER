@@ -47,7 +47,8 @@ public class UIManager : MonoBehaviour
 
     [Header("Ace Selection UI")]
     [SerializeField] private GameObject _aceSelectionPanel;
-    [SerializeField] private Transform _p1AceButtonGroup;
+    [SerializeField] private Transform _aceSlotContainer;
+    [SerializeField] private GameObject _aceSlotPrefab; // AceSlotView 컴포넌트 포함 (카드 이미지 + 토글 버튼)
     [SerializeField] private Button _p1AceConfirmButton;
 
     [Header("Item Slots")]
@@ -73,7 +74,7 @@ public class UIManager : MonoBehaviour
 
     private int _p1RaiseAmount = 0;
 
-    private List<Button> _p1AceButtons = new List<Button>();
+    private List<AceSlotView> _aceSlots = new List<AceSlotView>();
 
     private void Awake()
     {
@@ -390,9 +391,9 @@ public class UIManager : MonoBehaviour
 
         GameManager gm = GameManager.Instance;
 
-        foreach (Button btn in _p1AceButtons)
-            Destroy(btn.gameObject);
-        _p1AceButtons.Clear();
+        foreach (AceSlotView slot in _aceSlots)
+            Destroy(slot.gameObject);
+        _aceSlots.Clear();
 
         var cards = localPlayer == ActivePlayer.Player1
             ? gm.GetPlayer1Cards()
@@ -403,33 +404,32 @@ public class UIManager : MonoBehaviour
             if (cards[i].Card.Rank != Rank.Ace) continue;
 
             int index = i;
+            Card aceCard = cards[i].Card; // 실제로 들고 있는 그 에이스(하트/스페이드 등)
 
-            GameObject btnObj = new GameObject($"Ace_{index}");
-            btnObj.transform.SetParent(_p1AceButtonGroup, false);
+            GameObject slotObj = Instantiate(_aceSlotPrefab, _aceSlotContainer);
+            AceSlotView view = slotObj.GetComponent<AceSlotView>();
 
-            Button btn = btnObj.AddComponent<Button>();
-            var image = btnObj.AddComponent<UnityEngine.UI.Image>();
-            image.color = Color.white;
+            if (view == null)
+            {
+                Debug.LogError("[에이스 선택] _aceSlotPrefab에 AceSlotView 컴포넌트가 없음");
+                continue;
+            }
 
-            GameObject textObj = new GameObject("Text");
-            textObj.transform.SetParent(btnObj.transform, false);
-            var tmp = textObj.AddComponent<TMPro.TextMeshProUGUI>();
-            tmp.text = "1";
-            tmp.fontSize = 20;
-            tmp.alignment = TMPro.TextAlignmentOptions.Center;
-            tmp.color = Color.black;
+            // 내가 들고 있는 카드 그대로 표시 (예: 하트 에이스와 스페이드 에이스를
+            // 같이 들고 있으면 각 슬롯에 그 두 그림이 그대로 나옴)
+            if (view.CardImage != null && _cardSpriteDatabase != null)
+                view.CardImage.sprite = _cardSpriteDatabase.GetSprite(aceCard);
 
-            var rect = btnObj.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(120, 50);
-
-            var textRect = textObj.GetComponent<RectTransform>();
-            textRect.sizeDelta = new Vector2(120, 50);
+            TextMeshProUGUI tmp = view.ToggleButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (tmp != null)
+                tmp.text = "1";
 
             bool isEleven = false;
-            btn.onClick.AddListener(() =>
+            view.ToggleButton.onClick.AddListener(() =>
             {
                 isEleven = !isEleven;
-                tmp.text = (isEleven ? 11 : 1).ToString();
+                if (tmp != null)
+                    tmp.text = (isEleven ? 11 : 1).ToString();
 
                 if (NetworkGameManager.Instance != null)
                     NetworkGameManager.Instance.RequestAceValueChanged(localPlayer, index, isEleven);
@@ -437,7 +437,7 @@ public class UIManager : MonoBehaviour
                     GameManager.Instance.OnAceValueChanged(localPlayer, index, isEleven);
             });
 
-            _p1AceButtons.Add(btn);
+            _aceSlots.Add(view);
         }
     }
 
@@ -447,8 +447,8 @@ public class UIManager : MonoBehaviour
 
         _aceSelectionPanel.SetActive(false);
 
-        foreach (Button btn in _p1AceButtons) Destroy(btn.gameObject);
-        _p1AceButtons.Clear();
+        foreach (AceSlotView slot in _aceSlots) Destroy(slot.gameObject);
+        _aceSlots.Clear();
     }
 
     // 게임 종료 감지 즉시(양쪽 클라이언트 각자) 결과를 계산해 NetworkManager에
