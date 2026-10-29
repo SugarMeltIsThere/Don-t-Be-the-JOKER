@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -28,31 +29,25 @@ public enum BettingAction
     Die
 }
 
-// 게임 규칙의 단일 진실 공급원.
-//  - 로컬/호스트: 규칙을 직접 실행하고, 끝날 때마다 Commit()으로 공개 상태를 게스트에 전파한다.
-//  - 게스트(미러): 규칙을 실행하지 않는다. 호스트가 보낸 스냅샷/손패 이벤트(Mirror*)를 반영만 한다.
 public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    // ───────────────────────── 규칙 상수 ─────────────────────────
     private const int StartChips = 40;
     private const int Blackjack = 21;
-    private const int MinDeckSize = 10;        // 이보다 적으면 덱 리셔플
-    private const int BaseBet = 1;             // 베팅 단계 시작 시 각자 내는 기본 칩
-    private const int DiePenalty = 5;          // 다이했는데 상대가 버스트였을 때 추가 징수
+    private const int MinDeckSize = 10;
+    private const int BaseBet = 1;
+    private const int DiePenalty = 5;
     private const int JokerPenalty = 10;
     private const int FlashSteal = 3;
-    private const int ItemStreakInterval = 2;  // N연패마다 아이템 지급
+    private const int ItemStreakInterval = 2;
     private const int DefaultItemSlots = 2;
+    private const float RoundEndRevealDuration = 2.5f;
 
     private static readonly ItemType[] RewardItems = { ItemType.Magnifier, ItemType.Flash, ItemType.Bribe };
 
-    // 게스트가 상대의 비공개 카드 자리를 채워 두는 자리표시자 (값 0이라 합계에 영향 없음)
     public static readonly Card HiddenCard = new Card(Rank.Joker, Suit.Spade);
 
-    // ───────────────────────── 플레이어별 상태 ─────────────────────────
-    // P1/P2로 갈라져 있던 필드를 자리(Seat) 하나로 묶고, (int)ActivePlayer 로 인덱싱한다.
     private sealed class Seat
     {
         public int Chips = StartChips;
@@ -63,6 +58,7 @@ public class GameManager : MonoBehaviour
         public Character Character;
         public readonly List<Item> Items = new List<Item>();
 
+        // 매치 시작 시 좌석의 칩과 연패와 아이템을 초기화한다
         public void ResetMatch()
         {
             Chips = StartChips;
@@ -75,19 +71,19 @@ public class GameManager : MonoBehaviour
 
     private readonly Seat[] _seats = { new Seat(), new Seat() };
 
+    // 좌석 번호로 좌석 객체를 가져온다
     private Seat S(ActivePlayer player) => _seats[(int)player];
+    // 상대 좌석을 반환한다
     private static ActivePlayer Opponent(ActivePlayer player) =>
         player == ActivePlayer.Player1 ? ActivePlayer.Player2 : ActivePlayer.Player1;
     private Seat CurrentSeat => CurrentPlayer == ActivePlayer.None ? null : S(CurrentPlayer);
 
-    // ───────────────────────── 공용 상태 ─────────────────────────
     private Deck _deck;
     private Card _sharedCard;
     private int _pot;
     private int _round;
     private bool _isFirstRound = true;
     private bool _isFirstBet = true;
-    private bool _isMagnifierActive;
     private ActivePlayer _bettingFirst;
     private ActivePlayer _diedPlayer = ActivePlayer.None;
     private ActivePlayer _lastLoser = ActivePlayer.None;
@@ -98,8 +94,9 @@ public class GameManager : MonoBehaviour
     public GamePhase CurrentPhase { get; private set; }
     public ActivePlayer CurrentPlayer { get; private set; }
 
-    // ───────────────────────── UI 표시용 (기존 이름 유지) ─────────────────────────
+    // 플레이어1의 손패를 반환한다
     public IReadOnlyList<CardSlot> GetPlayer1Cards() => _seats[0].Hand?.Cards;
+    // 플레이어2의 손패를 반환한다
     public IReadOnlyList<CardSlot> GetPlayer2Cards() => _seats[1].Hand?.Cards;
     public int Player1Chips => _seats[0].Chips;
     public int Player2Chips => _seats[1].Chips;
@@ -114,17 +111,15 @@ public class GameManager : MonoBehaviour
 
     public int Pot => _pot;
     public bool IsFirstBet => _isFirstBet;
-    public bool IsMagnifierActive => _isMagnifierActive;
     public Card SharedCard => _sharedCard;
     public Item PendingItem => _pendingItem;
     public ActivePlayer PendingItemPlayer => _pendingItemPlayer;
-    public Card PeekedCard { get; private set; }   // 게스트가 돋보기로 확인한 다음 카드
+    public Card PeekedCard { get; private set; }
 
     public int CallAmount => CurrentPlayer == ActivePlayer.None
         ? 0
         : S(Opponent(CurrentPlayer)).TotalBet - CurrentSeat.TotalBet;
 
-    // 레이즈 금액이 곧 상대의 다음 콜 금액이 되므로, 상대 보유 칩을 넘지 않도록 제한
     public int MaxRaise => CurrentPlayer == ActivePlayer.None
         ? 0
         : Mathf.Max(0, Mathf.Min(CurrentSeat.Chips - CallAmount, S(Opponent(CurrentPlayer)).Chips));
@@ -150,8 +145,7 @@ public class GameManager : MonoBehaviour
 
     public bool CanHit => CanStand && !CurrentSeat.Hand.MustStand;
 
-    // ───────────────────────── 네트워크 경계 ─────────────────────────
-    private IGameNet _net;   // 테스트용 주입. 평소에는 씬의 NetworkGameManager를 쓴다.
+    private IGameNet _net;
 
     private IGameNet Net
     {
@@ -159,18 +153,20 @@ public class GameManager : MonoBehaviour
         {
             if (_net != null) return _net;
             NetworkGameManager scene = NetworkGameManager.Instance;
-            return scene != null ? scene : null;   // UnityEngine.Object의 null 비교를 거치기 위해 구체 타입으로 비교
+            return scene != null ? scene : null;
         }
     }
 
+    // 네트워크 구현체를 주입한다
     public void SetNet(IGameNet net) => _net = net;
 
     private bool IsMirror => Net != null && !Net.IsHost;
-    private IGameNet HostNet => Net != null && Net.IsHost ? Net : null;   // 호스트일 때만 전송 대상
+    private IGameNet HostNet => Net != null && Net.IsHost ? Net : null;
     private ActivePlayer LocalSeat => Net != null ? Net.LocalPlayer : ActivePlayer.Player1;
+    // 이 좌석이 로컬 플레이어의 자리인지 확인한다
     private bool IsLocalSeat(ActivePlayer player) => Net == null || Net.LocalPlayer == player;
 
-    // ───────────────────────── 생명주기 ─────────────────────────
+    // 싱글턴을 등록한다
     private void Awake()
     {
         if (Instance != null && Instance != this)
@@ -181,22 +177,15 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
+    // 네트워크가 없으면 로컬 게임을 시작한다
     private void Start()
     {
-        // NetworkGameManager가 없을 때만 로컬로 초기화 (테스트용)
         if (Net == null)
-            InitializeGame();
+            InitializeGame(CharacterType.King, CharacterType.Queen);
     }
 
-    // ───────────────────────── 게임 시작 / 재시작 ─────────────────────────
-    public void InitializeGame()
-    {
-        SetCharacter(ActivePlayer.Player1, CharacterType.King);
-        SetCharacter(ActivePlayer.Player2, CharacterType.Queen);
-        RestartGame();
-    }
-
-    public void RestartGame()
+    // 선택한 캐릭터로 새 매치를 시작한다
+    public void InitializeGame(CharacterType p1Type, CharacterType p2Type)
     {
         foreach (Seat seat in _seats)
             seat.ResetMatch();
@@ -205,11 +194,26 @@ public class GameManager : MonoBehaviour
         _isFirstRound = true;
         _lastLoser = ActivePlayer.None;
 
+        SetCharacter(ActivePlayer.Player1, p1Type);
+        SetCharacter(ActivePlayer.Player2, p2Type);
+
         _deck = NewDeck();
-        ApplyCharacterAbilities();   // 조커 능력이 새 덱에 들어가도록 덱 생성 뒤에 적용
+        ApplyCharacterAbilities();
+        RefreshCharacterUI();
         StartNewRound();
     }
 
+    // 캐릭터 이름을 화면에 반영한다
+    private void RefreshCharacterUI()
+    {
+        UIManager ui = UIManager.Instance;
+        if (ui == null) return;
+
+        ActivePlayer opponent = Opponent(LocalSeat);
+        ui.SetCharacterInfo(S(LocalSeat).Character?.GetName() ?? "-", S(opponent).Character?.GetName() ?? "-");
+    }
+
+    // 새 덱을 만든다
     private static Deck NewDeck()
     {
         Deck deck = new Deck(includeJoker: false);
@@ -217,19 +221,21 @@ public class GameManager : MonoBehaviour
         return deck;
     }
 
+    // 두 좌석의 캐릭터 능력을 적용한다
     private void ApplyCharacterAbilities()
     {
         for (int i = 0; i < _seats.Length; i++)
             _seats[i].Character?.OnGameStart(this, (ActivePlayer)i);
     }
 
-    // 캐릭터 능력(Character.cs)이 호출하는 진입점들
+    // 좌석에 캐릭터를 지정한다
     public void SetCharacter(ActivePlayer player, CharacterType type)
     {
         S(player).Character = CreateCharacter(type);
         Debug.Log($"[캐릭터 선택] {player} / {type}");
     }
 
+    // 종류에 맞는 캐릭터 객체를 만든다
     private static Character CreateCharacter(CharacterType type) => type switch
     {
         CharacterType.King => new KingCharacter(),
@@ -239,20 +245,23 @@ public class GameManager : MonoBehaviour
         _ => null
     };
 
-    public void SetItemSlots(ActivePlayer player, int slots) => S(player).ItemSlots = slots;    // 킹: 슬롯 증가
-    public void AddChips(ActivePlayer player, int amount) => S(player).Chips += amount;         // 퀸: 칩 추가
-    public void InsertJokerCard() => _deck.InsertJoker();                                       // 조커: 덱에 조커 삽입
+    // 아이템 슬롯 수를 설정한다
+    public void SetItemSlots(ActivePlayer player, int slots) => S(player).ItemSlots = slots;
+    // 칩을 추가한다
+    public void AddChips(ActivePlayer player, int amount) => S(player).Chips += amount;
+    // 덱에 조커를 넣는다
+    public void InsertJokerCard() => _deck?.InsertJoker();
 
-    // ───────────────────────── 라운드 시작 ─────────────────────────
+    // 새 라운드를 시작하고 상태를 전송한다
     public void StartNewRound()
     {
         BeginRound();
         Commit();
     }
 
+    // 라운드 상태를 초기화하고 공유 카드와 첫 카드를 나눠준다
     private void BeginRound()
     {
-        // 덱이 부족하면 리셔플
         if (_deck == null || _deck.Count < MinDeckSize)
         {
             _deck = NewDeck();
@@ -289,6 +298,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[드로우 단계 시작] 선공: {CurrentPlayer}");
     }
 
+    // 첫 차례 플레이어를 정한다
     private void DetermineFirstTurn()
     {
         if (!_isFirstRound && _lastLoser != ActivePlayer.None)
@@ -298,7 +308,6 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            // 첫 라운드: A~10을 섞어 두 장을 뽑고, 더 높은 쪽이 선공
             List<Card> turnDeck = new List<Card>(10);
             for (Rank rank = Rank.Ace; rank <= Rank.Ten; rank++)
                 turnDeck.Add(new Card(rank, Suit.Spade));
@@ -313,7 +322,8 @@ public class GameManager : MonoBehaviour
         _bettingFirst = CurrentPlayer;
     }
 
-    private void Shuffle(List<Card> cards)   // Fisher-Yates
+    // 카드 목록을 섞는다
+    private void Shuffle(List<Card> cards)
     {
         for (int n = cards.Count - 1; n > 0; n--)
         {
@@ -322,19 +332,18 @@ public class GameManager : MonoBehaviour
         }
     }
 
-    // 손패에 카드를 넣고, 게스트가 알아도 되는 만큼만 전송한다.
+    // 좌석에 카드를 한 장 나눠준다
     private void Deal(ActivePlayer seat, Card card)
     {
         PlayerHand hand = S(seat).Hand;
         hand.AddCard(card);
 
-        // AddCard가 직전 카드를 공개 상태로 바꾸므로, 그 카드는 상대에게도 알려준다.
         IReadOnlyList<CardSlot> cards = hand.Cards;
         Card revealed = cards.Count > 1 ? cards[cards.Count - 2].Card : null;
         HostNet?.SendCard(seat, card, revealed);
     }
 
-    // ───────────────────────── 드로우 단계 ─────────────────────────
+    // 현재 플레이어가 카드를 한 장 더 받는다
     public void OnHit()
     {
         if (!CanHit) return;
@@ -355,6 +364,7 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
+    // 현재 플레이어가 카드 받기를 마친다
     public void OnStand()
     {
         if (!CanStand) return;
@@ -367,11 +377,11 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
+    // 차례를 상대에게 넘긴다
     private void SwitchTurn()
     {
         ActivePlayer next = Opponent(CurrentPlayer);
 
-        // 상대가 스탠드면 현재 플레이어 턴 유지
         if (S(next).Hand.IsStanding)
         {
             Debug.Log($"[턴 전환] 상대 스탠드 → {CurrentPlayer} 턴 유지");
@@ -382,6 +392,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[턴 전환] → {CurrentPlayer}");
     }
 
+    // 모두 스탠드했으면 에이스 선택 단계로 넘어간다
     private bool TryAdvancePhase()
     {
         if (!_seats.All(seat => seat.Hand.IsStanding)) return false;
@@ -392,22 +403,24 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    // 조커를 뽑은 플레이어에게 패널티를 주고 라운드를 끝낸다
     private void HandleJokerDraw()
     {
-        Debug.Log($"[조커] {CurrentPlayer} 조커 드로우 → 즉시 패배");
+        ActivePlayer drawer = CurrentPlayer;
+        Debug.Log($"[조커] {drawer} 조커 드로우 → 즉시 패배");
 
-        int penalty = Mathf.Min(JokerPenalty, CurrentSeat.Chips);
-        Transfer(CurrentPlayer, Opponent(CurrentPlayer), penalty);
-        Debug.Log($"[조커 패널티] {CurrentPlayer} 칩 {penalty}개 징수 / P1: {Player1Chips} / P2: {Player2Chips}");
+        int penalty = Mathf.Min(JokerPenalty, S(drawer).Chips);
+        Transfer(drawer, Opponent(drawer), penalty);
+        Debug.Log($"[조커 패널티] {drawer} 칩 {penalty}개 징수 / P1: {Player1Chips} / P2: {Player2Chips}");
 
         CurrentPhase = GamePhase.RoundEnd;
         CurrentPlayer = ActivePlayer.None;
 
         if (!TryEndMatch())
-            BeginRound();
+            SettleRound(Opponent(drawer));
     }
 
-    // ───────────────────────── 에이스 선택 단계 ─────────────────────────
+    // 에이스 값을 11 또는 1로 바꾼다
     public void OnAceValueChanged(ActivePlayer player, int cardIndex, bool isEleven)
     {
         if (CurrentPhase != GamePhase.AceSelection) return;
@@ -420,6 +433,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[에이스 선택] {player} / 인덱스: {cardIndex} / 값: {(isEleven ? 11 : 1)}");
     }
 
+    // 에이스 선택을 확정하고 모두 확정되면 다음 단계로 넘어간다
     public void OnAceSelectionConfirmed(ActivePlayer player)
     {
         if (CurrentPhase != GamePhase.AceSelection) return;
@@ -428,22 +442,25 @@ public class GameManager : MonoBehaviour
         hand.ConfirmAceSelection();
         Debug.Log($"[에이스 확정] {player} / 합계: {hand.GetTotal()}");
 
+        if (player == ActivePlayer.Player1)
+            HostNet?.SendOpponentAces(AceMask(hand, includeLast: false));
+
         if (_seats.All(seat => seat.Hand.AceSelectionConfirmed))
             EnterCardRevealPhase();
         Commit();
     }
 
+    // 카드 공개 단계로 들어간다
     private void EnterCardRevealPhase()
     {
         CurrentPhase = GamePhase.CardReveal;
         CurrentPlayer = ActivePlayer.None;
         Debug.Log("[패 공개 단계 시작]");
 
-        // 나중에 여기에 서버 버전 패 공개 로직 추가
-        // 지금은 바로 베팅 단계로
         EnterBettingPhase();
     }
 
+    // 카드 공개가 끝나면 베팅 단계로 넘어간다
     public void OnCardRevealCompleted()
     {
         if (CurrentPhase != GamePhase.CardReveal) return;
@@ -451,19 +468,20 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
-    // ───────────────────────── 베팅 단계 ─────────────────────────
+    // 베팅 단계로 들어간다
     private void EnterBettingPhase()
     {
         CurrentPhase = GamePhase.Betting;
         CurrentPlayer = _bettingFirst;
         _isFirstBet = true;
 
-        foreach (Seat seat in _seats)   // 양쪽 각 1개씩 기본 베팅
+        foreach (Seat seat in _seats)
             Pay(seat, BaseBet);
 
         Debug.Log($"[베팅 단계 시작] 선공: {CurrentPlayer} / 기본 베팅 각 {BaseBet}개 / 팟: {_pot} / P1칩: {Player1Chips} / P2칩: {Player2Chips}");
     }
 
+    // 베팅 금액을 올린다
     public void OnRaise(int amount)
     {
         if (!CanRaise) return;
@@ -479,6 +497,7 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
+    // 상대 베팅에 맞춘다
     public void OnCall()
     {
         if (!CanCall) return;
@@ -491,6 +510,7 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
+    // 라운드를 포기한다
     public void OnDie()
     {
         if (!CanDie) return;
@@ -502,6 +522,7 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
+    // 좌석의 칩을 베팅에 넣는다
     private void Pay(Seat seat, int amount)
     {
         seat.Chips -= amount;
@@ -509,19 +530,40 @@ public class GameManager : MonoBehaviour
         _pot += amount;
     }
 
+    // 칩을 한 좌석에서 다른 좌석으로 옮긴다
     private void Transfer(ActivePlayer from, ActivePlayer to, int amount)
     {
         S(from).Chips -= amount;
         S(to).Chips += amount;
     }
 
-    // ───────────────────────── 라운드 종료 / 승패 ─────────────────────────
+    // 마지막 카드를 공개하고 결과 연출을 시작한다
     private void EnterRoundEnd(bool isDie)
     {
         CurrentPhase = GamePhase.RoundEnd;
         CurrentPlayer = ActivePlayer.None;
+
+        foreach (Seat seat in _seats)
+            seat.Hand.RevealLastCard();
         Debug.Log("[마지막 카드 공개]");
 
+        PlayerHand hostHand = _seats[0].Hand;
+        HostNet?.SendReveal(hostHand.Cards[hostHand.Cards.Count - 1].Card, AceMask(hostHand, includeLast: true));
+
+        StartCoroutine(RoundEndSequence(isDie));
+    }
+
+    // 연출 시간이 지난 뒤 승자를 판정한다
+    private IEnumerator RoundEndSequence(bool isDie)
+    {
+        yield return new WaitForSeconds(RoundEndRevealDuration);
+        DetermineWinner(isDie);
+        Commit();
+    }
+
+    // 승자를 판정해 팟을 정산한다
+    private void DetermineWinner(bool isDie)
+    {
         PlayerHand h1 = _seats[0].Hand;
         PlayerHand h2 = _seats[1].Hand;
         Debug.Log($"[최종 합계] P1: {h1.GetTotal()} / P2: {h2.GetTotal()}");
@@ -529,7 +571,6 @@ public class GameManager : MonoBehaviour
 
         ActivePlayer winner = GetWinner();
 
-        // 팟 정산 먼저
         if (winner != ActivePlayer.None)
         {
             S(winner).Chips += _pot;
@@ -541,7 +582,6 @@ public class GameManager : MonoBehaviour
             Debug.Log($"[무승부] 팟 {_pot}개 보류");
         }
 
-        // 다이 패널티는 팟 정산 후: 다이한 쪽의 상대가 버스트였다면 추가 징수
         if (isDie && _diedPlayer != ActivePlayer.None && S(Opponent(_diedPlayer)).Hand.IsBusted)
         {
             int penalty = Mathf.Min(DiePenalty, S(_diedPlayer).Chips);
@@ -553,11 +593,18 @@ public class GameManager : MonoBehaviour
         SettleRound(winner);
     }
 
-    // 승패 규칙:
-    //  1) 다이한 쪽은 무조건 패배
-    //  2) 한쪽만 버스트 → 버스트가 아닌 쪽이 승리 (버스트는 정상 패를 절대 이기지 못한다)
-    //  3) 둘 다 정상이거나 둘 다 버스트 → 21에 더 가까운 쪽이 승리
-    //  4) 그래도 같으면 가장 높은 카드(값 → 무늬 순)로 비교
+    // 에이스 선택 상태를 비트마스크로 만든다
+    private static int AceMask(PlayerHand hand, bool includeLast)
+    {
+        int mask = 0;
+        int count = includeLast ? hand.Cards.Count : hand.Cards.Count - 1;
+        for (int i = 0; i < count; i++)
+            if (hand.Cards[i].Card.Rank == Rank.Ace && hand.IsAceEleven(i))
+                mask |= 1 << i;
+        return mask;
+    }
+
+    // 합계와 버스트 여부로 승자를 구한다
     private ActivePlayer GetWinner()
     {
         if (_diedPlayer != ActivePlayer.None) return Opponent(_diedPlayer);
@@ -576,16 +623,18 @@ public class GameManager : MonoBehaviour
         return CompareHighestCard(h1, h2);
     }
 
+    // 가장 높은 카드로 승자를 가린다
     private static ActivePlayer CompareHighestCard(PlayerHand h1, PlayerHand h2)
     {
         Card c1 = HighestCard(h1);
         Card c2 = HighestCard(h2);
 
-        if (c1.GetBlackjackValue() == c2.GetBlackjackValue() && c1.Suit == c2.Suit)
-            return ActivePlayer.None;   // 완전 동점 → 무승부
+        if (c1.Rank == c2.Rank && c1.Suit == c2.Suit)
+            return ActivePlayer.None;
         return Outranks(c1, c2) ? ActivePlayer.Player1 : ActivePlayer.Player2;
     }
 
+    // 손패에서 가장 높은 카드를 찾는다
     private static Card HighestCard(PlayerHand hand)
     {
         Card highest = hand.Cards[0].Card;
@@ -595,12 +644,11 @@ public class GameManager : MonoBehaviour
         return highest;
     }
 
+    // 앞 카드가 뒤 카드보다 높은지 비교한다
     private static bool Outranks(Card a, Card b) =>
-        a.GetBlackjackValue() != b.GetBlackjackValue()
-            ? a.GetBlackjackValue() > b.GetBlackjackValue()
-            : a.Suit > b.Suit;
+        a.Rank != b.Rank ? a.Rank > b.Rank : a.Suit > b.Suit;
 
-    // 칩이 떨어진 쪽이 있으면 게임 종료
+    // 칩이 바닥난 플레이어가 있으면 매치를 끝낸다
     private bool TryEndMatch()
     {
         if (Player1Chips > 0 && Player2Chips > 0) return false;
@@ -611,7 +659,7 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
-    // 연패 집계 → 아이템 지급 → 다음 라운드
+    // 연패를 집계하고 아이템 지급 뒤 다음 라운드로 넘어간다
     private void SettleRound(ActivePlayer winner)
     {
         if (winner != ActivePlayer.None)
@@ -622,24 +670,31 @@ public class GameManager : MonoBehaviour
             S(loser).LoseStreak++;
 
             CheckAndGiveItem(loser);
-            if (CurrentPhase == GamePhase.ItemDiscard) return;   // 슬롯이 가득 → 폐기 선택을 기다린다
+            if (CurrentPhase == GamePhase.ItemDiscard) return;
         }
 
         BeginRound();
     }
 
-    // 상대가 나간 경우 등: 나간 쪽 칩을 0으로 만들어 즉시 패배 처리 (재접속 없음)
-    public void Forfeit(ActivePlayer leaver)
+    // 상대가 나가면 매치를 즉시 끝내고 로비로 돌아간다
+    public void HandleOpponentLeft()
     {
         if (CurrentPhase == GamePhase.GameEnd) return;
 
-        S(leaver).Chips = 0;
-        Debug.Log($"[기권] {leaver} 이탈");
-        TryEndMatch();
-        Commit();
+        UIManager.Instance?.SuppressGameEndHandling();
+
+        CurrentPhase = GamePhase.GameEnd;
+        CurrentPlayer = ActivePlayer.None;
+        StopAllCoroutines();
+        Debug.Log("[네트워크] 상대방 퇴장으로 매치 종료");
+
+        NetworkManager nm = NetworkManager.Instance;
+        if (nm == null) return;
+        nm.PendingGameResultText = "OPPONENT LEFT - YOU WIN!";
+        nm.ReturnAfterOpponentLeft();
     }
 
-    // ───────────────────────── 아이템 ─────────────────────────
+    // 연패 조건을 채우면 아이템을 지급한다
     private void CheckAndGiveItem(ActivePlayer player)
     {
         Seat seat = S(player);
@@ -662,6 +717,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[아이템 슬롯 가득] {player} / {reward} 폐기 선택 필요");
     }
 
+    // 플레이어에게 아이템을 추가한다
     public void AddItem(ActivePlayer player, ItemType type)
     {
         if (S(player).Character?.Type == CharacterType.Joker)
@@ -674,8 +730,10 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[아이템 획득] {player} / {type}");
     }
 
+    // 아이템을 가지고 있는지 확인한다
     private bool HasItem(ActivePlayer player, ItemType type) => S(player).Items.Any(item => item.Type == type);
 
+    // 아이템을 하나 제거한다
     private void RemoveItem(ActivePlayer player, ItemType type)
     {
         Character character = S(player).Character;
@@ -690,11 +748,11 @@ public class GameManager : MonoBehaviour
         if (index >= 0) items.RemoveAt(index);
     }
 
-    // 아이템 사용 가능 조건 (사용 시점과 내 차례)
+    // 아이템을 쓸 수 있는 상태인지 확인한다
     private bool CanUse(ActivePlayer player, ItemType type, GamePhase phase) =>
         CurrentPhase == phase && CurrentPlayer == player && HasItem(player, type);
 
-    // ── UI 진입점: 온라인에서는 내 자리만 조작하고, 게스트는 호스트에 요청만 보낸다 ──
+    // 돋보기를 사용한다
     public Card OnUseMagnifier(ActivePlayer player)
     {
         if (!IsLocalSeat(player)) return null;
@@ -702,6 +760,7 @@ public class GameManager : MonoBehaviour
         return HostUseMagnifier(player);
     }
 
+    // 뇌물을 사용한다
     public bool OnUseBribe(ActivePlayer player)
     {
         if (!IsLocalSeat(player)) return false;
@@ -709,6 +768,7 @@ public class GameManager : MonoBehaviour
         return HostUseBribe(player);
     }
 
+    // 플래시를 사용한다
     public bool OnUseFlash(ActivePlayer player)
     {
         if (!IsLocalSeat(player)) return false;
@@ -716,6 +776,7 @@ public class GameManager : MonoBehaviour
         return HostUseFlash(player);
     }
 
+    // 폐기할 아이템을 선택한다
     public void OnItemDiscard(ActivePlayer player, int discardIndex)
     {
         if (!IsLocalSeat(player)) return;
@@ -723,7 +784,7 @@ public class GameManager : MonoBehaviour
         HostDiscard(player, discardIndex);
     }
 
-    // ── 호스트 진입점: NetworkGameManager가 게스트의 요청을 대신 실행할 때도 쓴다 ──
+    // 요청받은 아이템을 종류에 맞게 실행한다
     public void HostUseItem(ActivePlayer seat, ItemType type)
     {
         switch (type)
@@ -734,20 +795,23 @@ public class GameManager : MonoBehaviour
         }
     }
 
+    // 덱 맨 위 카드를 보여준다
     private Card HostUseMagnifier(ActivePlayer player)
     {
         if (!CanUse(player, ItemType.Magnifier, GamePhase.Draw)) return null;
 
         RemoveItem(player, ItemType.Magnifier);
-        _isMagnifierActive = true;
 
         Card next = _deck.PeekTop();
         Debug.Log($"[돋보기] {player} / 다음 카드: {next}");
         HostNet?.SendPeek(player, next);
+        if (HostNet != null && IsLocalSeat(player))
+            UIManager.Instance?.ShowMagnifierResult(next);
         Commit();
         return next;
     }
 
+    // 자신의 마지막 카드를 새 카드로 교체한다
     private bool HostUseBribe(ActivePlayer player)
     {
         if (!CanUse(player, ItemType.Bribe, GamePhase.Draw)) return false;
@@ -767,6 +831,7 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    // 상대의 칩을 빼앗는다
     private bool HostUseFlash(ActivePlayer player)
     {
         if (!CanUse(player, ItemType.Flash, GamePhase.Betting)) return false;
@@ -780,6 +845,7 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
+    // 폐기 선택을 처리하고 다음 라운드를 시작한다
     public void HostDiscard(ActivePlayer player, int discardIndex)
     {
         if (CurrentPhase != GamePhase.ItemDiscard) return;
@@ -805,14 +871,14 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
-    // ───────────────────────── 동기화: 호스트 → 게스트 ─────────────────────────
-    // 명령 하나가 끝날 때 한 번 호출. UI를 갱신하고, 호스트라면 공개 상태를 스냅샷으로 내보낸다.
+    // 상태를 게스트에 보내고 화면을 갱신한다
     private void Commit()
     {
-        RefreshUI();
         HostNet?.PublishState(BuildSnapshot());
+        RefreshUI();
     }
 
+    // 현재 공개 상태를 스냅샷으로 만든다
     private GameSnapshot BuildSnapshot() => new GameSnapshot
     {
         Round = _round,
@@ -834,13 +900,14 @@ public class GameManager : MonoBehaviour
         PendingItem = _pendingItem == null ? GameSnapshot.None : (byte)_pendingItem.Type
     };
 
+    // 좌석의 캐릭터를 번호로 바꾼다
     private static byte CharacterCode(Seat seat) =>
         seat.Character == null ? GameSnapshot.None : (byte)seat.Character.Type;
 
-    // ───────────────────────── 동기화: 게스트(미러) 쪽 반영 ─────────────────────────
+    // 받은 스냅샷을 게스트의 상태에 반영한다
     public void MirrorApply(in GameSnapshot s)
     {
-        if (s.Round == 0) return;   // 호스트가 아직 게임을 시작하지 않음
+        if (s.Round == 0) return;
 
         _round = s.Round;
         CurrentPhase = (GamePhase)s.Phase;
@@ -848,15 +915,18 @@ public class GameManager : MonoBehaviour
         _pot = s.Pot;
         _isFirstBet = s.IsFirstBet;
 
-        ApplySeat(_seats[0], s.P1Chips, s.P1TotalBet, s.P1Slots, s.P1Items, s.P1Character);
-        ApplySeat(_seats[1], s.P2Chips, s.P2TotalBet, s.P2Slots, s.P2Items, s.P2Character);
+        bool characterChanged =
+            ApplySeat(_seats[0], s.P1Chips, s.P1TotalBet, s.P1Slots, s.P1Items, s.P1Character) |
+            ApplySeat(_seats[1], s.P2Chips, s.P2TotalBet, s.P2Slots, s.P2Items, s.P2Character);
+        if (characterChanged) RefreshCharacterUI();
 
         _pendingItem = s.PendingItem == GameSnapshot.None ? null : new Item((ItemType)s.PendingItem);
         _pendingItemPlayer = (ActivePlayer)s.PendingItemPlayer;
         RefreshUI();
     }
 
-    private static void ApplySeat(Seat seat, int chips, int totalBet, byte slots, byte items, byte character)
+    // 스냅샷 값을 좌석에 반영하고 캐릭터가 바뀌었는지 알려준다
+    private static bool ApplySeat(Seat seat, int chips, int totalBet, byte slots, byte items, byte character)
     {
         seat.Chips = chips;
         seat.TotalBet = totalBet;
@@ -864,10 +934,13 @@ public class GameManager : MonoBehaviour
         GameSnapshot.UnpackItems(items, seat.Items);
 
         CharacterType? type = character == GameSnapshot.None ? (CharacterType?)null : (CharacterType)character;
-        if (seat.Character?.Type != type)
-            seat.Character = type.HasValue ? CreateCharacter(type.Value) : null;   // 능력은 호스트에서만 실행되므로 객체만 만든다
+        if (seat.Character?.Type == type) return false;
+
+        seat.Character = type.HasValue ? CreateCharacter(type.Value) : null;
+        return true;
     }
 
+    // 게스트에서 새 라운드를 시작한다
     public void MirrorRoundStart(int round, Card sharedCard)
     {
         _round = round;
@@ -878,7 +951,7 @@ public class GameManager : MonoBehaviour
         RefreshUI();
     }
 
-    // revealedPrevious가 있으면 비공개였던 직전 카드를 진짜 값으로 교체한 뒤 새 카드를 붙인다.
+    // 게스트에서 카드가 나뉜 것을 반영한다
     public void MirrorCard(ActivePlayer seat, Card card, Card revealedPrevious)
     {
         PlayerHand hand = S(seat).Hand;
@@ -890,60 +963,89 @@ public class GameManager : MonoBehaviour
         RefreshUI();
     }
 
+    // 게스트에서 마지막 카드를 교체한다
     public void MirrorReplaceLast(ActivePlayer seat, Card card)
     {
         S(seat).Hand?.ReplaceLastCard(card);
         RefreshUI();
     }
 
+    // 게스트에서 돋보기 결과를 보여준다
     public void MirrorPeek(Card card)
     {
         PeekedCard = card;
         Debug.Log($"[돋보기] 다음 카드: {card}");
+        UIManager.Instance?.ShowMagnifierResult(card);
     }
 
-    // 내 에이스 선택은 화면 합계에 바로 반영하고, 확정은 호스트가 따로 검증한다.
+    // 게스트에서 라운드 종료 시 상대 카드를 공개한다
+    public void MirrorReveal(Card hostLastCard, int hostAceMask)
+    {
+        Seat host = S(ActivePlayer.Player1);
+        if (host.Hand != null && host.Hand.Cards.Count > 0 && hostLastCard != null)
+        {
+            PlayerHand rebuilt = new PlayerHand(_sharedCard);
+            for (int i = 0; i < host.Hand.Cards.Count - 1; i++)
+                rebuilt.AddCard(host.Hand.Cards[i].Card);
+            rebuilt.AddCard(hostLastCard);
+            ApplyAceMask(rebuilt, hostAceMask);
+            host.Hand = rebuilt;
+        }
+
+        foreach (Seat seat in _seats)
+            seat.Hand?.RevealLastCard();
+
+        CurrentPhase = GamePhase.RoundEnd;
+        CurrentPlayer = ActivePlayer.None;
+        RefreshUI();
+    }
+
+    // 게스트에서 상대의 에이스 선택을 반영한다
+    public void MirrorOpponentAces(int mask)
+    {
+        PlayerHand hostHand = S(ActivePlayer.Player1).Hand;
+        if (hostHand == null) return;
+
+        ApplyAceMask(hostHand, mask);
+        RefreshUI();
+    }
+
+    // 비트마스크대로 에이스 값을 지정한다
+    private static void ApplyAceMask(PlayerHand hand, int mask)
+    {
+        for (int i = 0; i < hand.Cards.Count; i++)
+            hand.SetAceEleven(i, (mask & (1 << i)) != 0);
+        hand.ConfirmAceSelection();
+    }
+
+    // 게스트에서 에이스 값을 바꾼다
     public void MirrorAceValue(ActivePlayer seat, int cardIndex, bool isEleven) =>
         S(seat).Hand?.SetAceEleven(cardIndex, isEleven);
 
+    // 게스트에서 에이스 선택을 확정한다
     public void MirrorAceConfirm(ActivePlayer seat)
     {
         S(seat).Hand?.ConfirmAceSelection();
         RefreshUI();
     }
 
-    // ───────────────────────── UI ─────────────────────────
+    // 화면의 합계 표시를 갱신한다
     private void RefreshUI()
     {
-        UIManager ui = UIManager.Instance;
-        if (ui == null) return;
-
-        // 단계에 맞지 않는 패널 정리 (호스트/게스트 공통)
-        if (CurrentPhase != GamePhase.AceSelection) ui.HideAceSelectionPanel();
-        if (CurrentPhase != GamePhase.ItemDiscard) ui.HideItemDiscardPanel();
-        if (CurrentPhase != GamePhase.GameEnd) ui.HideGameEndPanel();
-
-        ActivePlayer me = LocalSeat;
-        ui.RefreshCards(
-            sharedCard: _sharedCard?.ToString() ?? "-",
-            p1Cards: CardsText(ActivePlayer.Player1),
-            p1Total: ViewTotal(ActivePlayer.Player1, me),
-            p2Cards: CardsText(ActivePlayer.Player2),
-            p2Total: ViewTotal(ActivePlayer.Player2, me));
+        UIManager.Instance?.RefreshCards(p1Total: TotalText(ActivePlayer.Player1), p2Total: TotalText(ActivePlayer.Player2));
     }
 
-    // 내 합계는 전부, 상대 합계는 공개된 카드까지만 (숨긴 마지막 카드는 합계에도 드러나지 않게)
-    private int ViewTotal(ActivePlayer seat, ActivePlayer viewer)
+    // 좌석의 합계를 화면에 쓸 글자로 만든다
+    private string TotalText(ActivePlayer seat)
     {
         PlayerHand hand = S(seat).Hand;
-        if (hand == null) return 0;
-        return seat == viewer ? hand.GetTotal() : hand.GetVisibleTotal();
-    }
+        if (hand == null) return "0";
 
-    private string CardsText(ActivePlayer seat)
-    {
-        PlayerHand hand = S(seat).Hand;
-        if (hand == null) return "-";
-        return string.Join(" ", hand.Cards.Select(slot => slot.IsHidden ? "?" : slot.Card.ToString()));
+        if (seat == LocalSeat || hand.Cards.Count == 0)
+            return hand.GetTotal().ToString();
+
+        return hand.Cards[hand.Cards.Count - 1].IsHidden
+            ? $"{hand.GetVisibleTotal()}+?"
+            : hand.GetTotal().ToString();
     }
 }

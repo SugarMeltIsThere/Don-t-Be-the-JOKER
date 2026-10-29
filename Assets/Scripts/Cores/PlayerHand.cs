@@ -66,6 +66,7 @@ public class PlayerHand
         else
             _aceElevenIndices.Remove(cardIndex);
     }
+    public bool IsAceEleven(int cardIndex) => _aceElevenIndices.Contains(cardIndex);   // 이 카드의 에이스를 11로 골랐는지
     public void ConfirmAceSelection()
     {
         AceSelectionConfirmed = true;

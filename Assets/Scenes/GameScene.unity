@@ -3202,7 +3202,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1004452519
 RectTransform:
   m_ObjectHideFlags: 0
@@ -6013,7 +6013,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a481b0e5ba8026b41ae69e135066b2b0, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::UIManager
-  _p1CardsText: {fileID: 0}
   _p1ChipsText: {fileID: 1323178472}
   _p1TotalText: {fileID: 1005068580}
   _p1HitButton: {fileID: 1955145599}
@@ -6031,29 +6030,41 @@ MonoBehaviour:
   _p1Minus10Button: {fileID: 151449334}
   _p1RaiseConfirmButton: {fileID: 99666306}
   _p1CancelButton: {fileID: 1314110355}
-  _p2CardsText: {fileID: 0}
   _p2ChipsText: {fileID: 1467926480}
   _p2TotalText: {fileID: 439389450}
-  _p2RaiseAmountText: {fileID: 0}
-  _sharedCardText: {fileID: 0}
   _potText: {fileID: 1424056996}
+  _myBetText: {fileID: 1094740354}
+  _opponentBetText: {fileID: 1524122987}
+  _myCharacterText: {fileID: 10084198}
+  _opponentCharacterText: {fileID: 2108794114}
+  _cardSpriteDatabase: {fileID: 11400000, guid: 1787c9a515b8766488cae65384a6487d, type: 2}
+  _sharedCardImage: {fileID: 1991450757}
+  _myCardsContainer: {fileID: 125003729}
+  _opponentCardsContainer: {fileID: 589883892}
+  _cardImagePrefab: {fileID: 4327403688390092739, guid: 01e609eeeaf06384b99a31fc8d01ac4d, type: 3}
   _aceSelectionPanel: {fileID: 1452388003}
-  _p1AceButtonGroup: {fileID: 0}
+  _aceSlotContainer: {fileID: 1085215580}
+  _aceSlotPrefab: {fileID: 2245004897368240935, guid: e64dc522cc1fb194ca8e951b7dcc5be1, type: 3}
   _p1AceConfirmButton: {fileID: 2053708178}
-  _p1ItemButtons: []
-  _p2ItemButtons: []
-  _p1ItemTexts: []
-  _p2ItemTexts: []
+  _myItemButtons:
+  - {fileID: 870143391}
+  - {fileID: 802288684}
+  - {fileID: 2129237536}
+  _opponentItemImages:
+  - {fileID: 1151416351}
+  - {fileID: 1889850349}
+  - {fileID: 1677780646}
+  _magnifierSprite: {fileID: 9209083643006130551, guid: e4232d36fa42da744999824b74c7cf25, type: 3}
+  _flashSprite: {fileID: 1447397356241704799, guid: 83c4d647c79e6804db3485581172a45d, type: 3}
+  _bribeSprite: {fileID: -427551370830645805, guid: f4f97fd8a45e5ad40a0bf50138e06b6d, type: 3}
   _itemDiscardPanel: {fileID: 1004452518}
+  _opponentDiscardWaitingPanel: {fileID: 436258839}
+  _opponentDiscardWaitingText: {fileID: 1575047051}
   _newItemText: {fileID: 223322849}
   _discardButton1: {fileID: 1482116298}
   _discardButton2: {fileID: 1570023290}
   _discardButton3: {fileID: 2080632449}
   _discardNewButton: {fileID: 572725100}
-  _gameEndPanel: {fileID: 0}
-  _resultText: {fileID: 0}
-  _returnToLobbyButton: {fileID: 0}
-  _leaveRoomButton: {fileID: 0}
 --- !u!4 &1665953652
 Transform:
   m_ObjectHideFlags: 0
