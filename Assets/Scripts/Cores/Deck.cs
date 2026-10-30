@@ -58,6 +58,11 @@ public class Deck
         return _cards[_cards.Count - 1];
     }
 
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+    // 테스트용으로 다음에 뽑힐 카드를 덱 맨 위에 올린다
+    public void DebugPushTop(Card card) => _cards.Add(card);
+#endif
+
     public void InsertJoker()
     {
         int index = _random.Next(_cards.Count);

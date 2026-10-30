@@ -68,6 +68,12 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button _discardButton3;
     [SerializeField] private Button _discardNewButton;
 
+    [Header("Item Notice")]
+    [SerializeField] private TextMeshProUGUI _itemNoticeText;
+    [SerializeField] private float _itemNoticeSeconds = 2.5f;
+
+    private Coroutine _itemNoticeRoutine;
+
     private ActivePlayer _discardTargetPlayer = ActivePlayer.None;
 
     private int _p1RaiseAmount = 0;
@@ -157,7 +163,9 @@ public class UIManager : MonoBehaviour
         _gm.CharactersChanged += OnCharactersChanged;
         _gm.PeekShown += ShowMagnifierResult;
         _gm.GameEnded += OnGameEnded;
+        _gm.ItemUsed += OnItemUsed;
 
+        if (_itemNoticeText != null) _itemNoticeText.gameObject.SetActive(false);
         OnCharactersChanged();
         OnStateChanged();
     }
@@ -171,6 +179,7 @@ public class UIManager : MonoBehaviour
         _gm.CharactersChanged -= OnCharactersChanged;
         _gm.PeekShown -= ShowMagnifierResult;
         _gm.GameEnded -= OnGameEnded;
+        _gm.ItemUsed -= OnItemUsed;
         _gm = null;
     }
 
@@ -183,6 +192,31 @@ public class UIManager : MonoBehaviour
             UpdatePhaseUI();
             UpdateItemSlots();
         }
+    }
+
+    // 누가 어떤 아이템을 썼는지 잠시 화면에 띄운다
+    private void OnItemUsed(ActivePlayer seat, ItemType type)
+    {
+        if (_itemNoticeText == null) return;
+
+        ActivePlayer localPlayer = NetworkGameManager.Instance != null
+            ? NetworkGameManager.Instance.LocalPlayer
+            : ActivePlayer.Player1;
+
+        string who = seat == localPlayer ? "YOU" : "OPPONENT";
+        _itemNoticeText.text = $"{who} USED {new Item(type).GetName().ToUpperInvariant()}";
+        _itemNoticeText.gameObject.SetActive(true);
+
+        if (_itemNoticeRoutine != null) StopCoroutine(_itemNoticeRoutine);
+        _itemNoticeRoutine = StartCoroutine(HideItemNotice());
+    }
+
+    // 정해진 시간이 지나면 아이템 알림을 숨긴다
+    private System.Collections.IEnumerator HideItemNotice()
+    {
+        yield return new WaitForSeconds(_itemNoticeSeconds);
+        _itemNoticeText.gameObject.SetActive(false);
+        _itemNoticeRoutine = null;
     }
 
     // 게임이 끝나면 상대 이탈이 아닌 경우에만 결과를 처리한다
@@ -262,7 +296,7 @@ public class UIManager : MonoBehaviour
     // 카드 개수에 맞춰 카드 이미지를 만들고 채운다
     private void RenderCardRow(Transform container, IReadOnlyList<CardSlot> cards, bool isMine)
     {
-        if (container == null || cards == null) return;
+        if (container == null || cards == null || !container.gameObject.activeInHierarchy) return;
 
         int currentCount = container.childCount;
         int targetCount = cards.Count;

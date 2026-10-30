@@ -820,8 +820,8 @@ public class GameManager : MonoBehaviour
 
         Card next = _deck.PeekTop();
         Debug.Log($"[돋보기] {player} / 다음 카드: {next}");
+        RaiseItemUsed(player, ItemType.Magnifier);
         HostNet?.SendPeek(player, next);
-        ItemUsed?.Invoke(player, ItemType.Magnifier);
         if (IsLocalSeat(player))
             PeekShown?.Invoke(next);
         Commit();
@@ -844,7 +844,7 @@ public class GameManager : MonoBehaviour
         HostNet?.SendReplaceLast(player, newCard);
 
         Debug.Log($"[거래] {player} / 마지막 카드 교체");
-        ItemUsed?.Invoke(player, ItemType.Bribe);
+        RaiseItemUsed(player, ItemType.Bribe);
         LastCardReplaced?.Invoke(player);
         Commit();
         return true;
@@ -860,9 +860,36 @@ public class GameManager : MonoBehaviour
         RemoveItem(player, ItemType.Flash);
 
         Debug.Log($"[플래쉬] {player} / {steal}개 탈취 / P1칩: {Player1Chips} / P2칩: {Player2Chips}");
-        ItemUsed?.Invoke(player, ItemType.Flash);
+        RaiseItemUsed(player, ItemType.Flash);
         Commit();
         return true;
+    }
+
+#if DEVELOPMENT_BUILD || UNITY_EDITOR
+    // 테스트용으로 두 좌석에 아이템을 하나씩 주고 상태를 전송한다
+    public void DebugGiveItemToBoth(ItemType type)
+    {
+        if (IsMirror) return;
+        foreach (ActivePlayer seat in new[] { ActivePlayer.Player1, ActivePlayer.Player2 })
+            if (S(seat).Items.Count < S(seat).ItemSlots) AddItem(seat, type);
+        Commit();
+    }
+
+    // 테스트용으로 다음에 뽑힐 카드들을 에이스로 만든다
+    public void DebugStackAces(int count)
+    {
+        if (IsMirror || _deck == null) return;
+        for (int i = 0; i < count; i++)
+            _deck.DebugPushTop(new Card(Rank.Ace, (Suit)(i % 4)));
+        Debug.Log($"[테스트] 다음 {count}장 에이스");
+    }
+#endif
+
+    // 아이템 사용을 게스트에 보내고 구독자에게 알린다
+    private void RaiseItemUsed(ActivePlayer player, ItemType type)
+    {
+        HostNet?.SendItemUsed(player, type);
+        ItemUsed?.Invoke(player, type);
     }
 
     // 폐기 선택을 처리하고 다음 라운드를 시작한다
@@ -1009,6 +1036,9 @@ public class GameManager : MonoBehaviour
         LastCardReplaced?.Invoke(seat);
         NotifyStateChanged();
     }
+
+    // 게스트에서 아이템 사용을 알린다
+    public void MirrorItemUsed(ActivePlayer seat, ItemType type) => ItemUsed?.Invoke(seat, type);
 
     // 게스트에서 돋보기 결과를 보여준다
     public void MirrorPeek(Card card)

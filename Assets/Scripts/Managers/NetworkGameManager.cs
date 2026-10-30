@@ -132,6 +132,17 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
         if (_spawned) RPC_OpponentAces(mask);
     }
 
+    // 게스트에 아이템 사용을 알린다
+    public void SendItemUsed(ActivePlayer seat, ItemType type)
+    {
+        if (_spawned) RPC_ItemUsed((byte)seat, (byte)type);
+    }
+
+    // 게스트에서 아이템 사용을 반영한다
+    [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
+    private void RPC_ItemUsed(byte seat, byte type) =>
+        GameManager.Instance.MirrorItemUsed((ActivePlayer)seat, (ItemType)type);
+
     // 게스트에서 새 라운드를 시작한다
     [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
     private void RPC_RoundStart(int round, int sharedCard) =>

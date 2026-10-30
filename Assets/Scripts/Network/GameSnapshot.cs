@@ -52,6 +52,7 @@ public interface IGameNet
     void SendPeek(ActivePlayer seat, Card card);
     void SendReveal(Card hostLastCard, int hostAceMask);
     void SendOpponentAces(int mask);
+    void SendItemUsed(ActivePlayer seat, ItemType type);
 
     void RequestUseItem(ItemType type);
     void RequestDiscard(int discardIndex);
