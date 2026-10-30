@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -27,6 +28,12 @@ public enum BettingAction
     Raise,
     Call,
     Die
+}
+
+public enum GameEndReason
+{
+    Normal,
+    OpponentLeft
 }
 
 public class GameManager : MonoBehaviour
@@ -93,6 +100,18 @@ public class GameManager : MonoBehaviour
 
     public GamePhase CurrentPhase { get; private set; }
     public ActivePlayer CurrentPlayer { get; private set; }
+
+    public event Action StateChanged;
+    public event Action CharactersChanged;
+    public event Action<int> RoundStarted;
+    public event Action<ActivePlayer, int> CardDealt;
+    public event Action<ActivePlayer> LastCardReplaced;
+    public event Action RoundRevealed;
+    public event Action<Card> PeekShown;
+    public event Action<ActivePlayer, ItemType> ItemUsed;
+    public event Action<GameEndReason> GameEnded;
+
+    private GamePhase _notifiedPhase;
 
     // 플레이어1의 손패를 반환한다
     public IReadOnlyList<CardSlot> GetPlayer1Cards() => _seats[0].Hand?.Cards;
@@ -199,19 +218,12 @@ public class GameManager : MonoBehaviour
 
         _deck = NewDeck();
         ApplyCharacterAbilities();
-        RefreshCharacterUI();
+        CharactersChanged?.Invoke();
         StartNewRound();
     }
 
-    // 캐릭터 이름을 화면에 반영한다
-    private void RefreshCharacterUI()
-    {
-        UIManager ui = UIManager.Instance;
-        if (ui == null) return;
-
-        ActivePlayer opponent = Opponent(LocalSeat);
-        ui.SetCharacterInfo(S(LocalSeat).Character?.GetName() ?? "-", S(opponent).Character?.GetName() ?? "-");
-    }
+    // 좌석의 캐릭터 이름을 반환한다
+    public string GetCharacterName(ActivePlayer seat) => S(seat).Character?.GetName() ?? "-";
 
     // 새 덱을 만든다
     private static Deck NewDeck()
@@ -283,6 +295,7 @@ public class GameManager : MonoBehaviour
         _isFirstBet = true;
         _diedPlayer = ActivePlayer.None;
         HostNet?.SendRoundStart(_round, _sharedCard);
+        RoundStarted?.Invoke(_round);
 
         CurrentPhase = GamePhase.FirstTurnDetermination;
         CurrentPlayer = ActivePlayer.None;
@@ -341,6 +354,7 @@ public class GameManager : MonoBehaviour
         IReadOnlyList<CardSlot> cards = hand.Cards;
         Card revealed = cards.Count > 1 ? cards[cards.Count - 2].Card : null;
         HostNet?.SendCard(seat, card, revealed);
+        CardDealt?.Invoke(seat, cards.Count - 1);
     }
 
     // 현재 플레이어가 카드를 한 장 더 받는다
@@ -549,6 +563,7 @@ public class GameManager : MonoBehaviour
 
         PlayerHand hostHand = _seats[0].Hand;
         HostNet?.SendReveal(hostHand.Cards[hostHand.Cards.Count - 1].Card, AceMask(hostHand, includeLast: true));
+        RoundRevealed?.Invoke();
 
         StartCoroutine(RoundEndSequence(isDie));
     }
@@ -681,12 +696,13 @@ public class GameManager : MonoBehaviour
     {
         if (CurrentPhase == GamePhase.GameEnd) return;
 
-        UIManager.Instance?.SuppressGameEndHandling();
-
         CurrentPhase = GamePhase.GameEnd;
         CurrentPlayer = ActivePlayer.None;
         StopAllCoroutines();
         Debug.Log("[네트워크] 상대방 퇴장으로 매치 종료");
+
+        _notifiedPhase = GamePhase.GameEnd;
+        GameEnded?.Invoke(GameEndReason.OpponentLeft);
 
         NetworkManager nm = NetworkManager.Instance;
         if (nm == null) return;
@@ -805,8 +821,9 @@ public class GameManager : MonoBehaviour
         Card next = _deck.PeekTop();
         Debug.Log($"[돋보기] {player} / 다음 카드: {next}");
         HostNet?.SendPeek(player, next);
-        if (HostNet != null && IsLocalSeat(player))
-            UIManager.Instance?.ShowMagnifierResult(next);
+        ItemUsed?.Invoke(player, ItemType.Magnifier);
+        if (IsLocalSeat(player))
+            PeekShown?.Invoke(next);
         Commit();
         return next;
     }
@@ -827,6 +844,8 @@ public class GameManager : MonoBehaviour
         HostNet?.SendReplaceLast(player, newCard);
 
         Debug.Log($"[거래] {player} / 마지막 카드 교체");
+        ItemUsed?.Invoke(player, ItemType.Bribe);
+        LastCardReplaced?.Invoke(player);
         Commit();
         return true;
     }
@@ -841,6 +860,7 @@ public class GameManager : MonoBehaviour
         RemoveItem(player, ItemType.Flash);
 
         Debug.Log($"[플래쉬] {player} / {steal}개 탈취 / P1칩: {Player1Chips} / P2칩: {Player2Chips}");
+        ItemUsed?.Invoke(player, ItemType.Flash);
         Commit();
         return true;
     }
@@ -871,11 +891,25 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
-    // 상태를 게스트에 보내고 화면을 갱신한다
+    // 상태를 게스트에 보내고 구독자에게 알린다
     private void Commit()
     {
         HostNet?.PublishState(BuildSnapshot());
-        RefreshUI();
+        NotifyStateChanged();
+    }
+
+    // 상태 변경을 알리고 게임 종료 단계로 처음 들어왔으면 종료도 알린다
+    private void NotifyStateChanged()
+    {
+        StateChanged?.Invoke();
+
+        if (CurrentPhase == GamePhase.GameEnd && _notifiedPhase != GamePhase.GameEnd)
+        {
+            _notifiedPhase = GamePhase.GameEnd;
+            GameEnded?.Invoke(GameEndReason.Normal);
+            return;
+        }
+        _notifiedPhase = CurrentPhase;
     }
 
     // 현재 공개 상태를 스냅샷으로 만든다
@@ -918,11 +952,11 @@ public class GameManager : MonoBehaviour
         bool characterChanged =
             ApplySeat(_seats[0], s.P1Chips, s.P1TotalBet, s.P1Slots, s.P1Items, s.P1Character) |
             ApplySeat(_seats[1], s.P2Chips, s.P2TotalBet, s.P2Slots, s.P2Items, s.P2Character);
-        if (characterChanged) RefreshCharacterUI();
+        if (characterChanged) CharactersChanged?.Invoke();
 
         _pendingItem = s.PendingItem == GameSnapshot.None ? null : new Item((ItemType)s.PendingItem);
         _pendingItemPlayer = (ActivePlayer)s.PendingItemPlayer;
-        RefreshUI();
+        NotifyStateChanged();
     }
 
     // 스냅샷 값을 좌석에 반영하고 캐릭터가 바뀌었는지 알려준다
@@ -948,7 +982,8 @@ public class GameManager : MonoBehaviour
         foreach (Seat seat in _seats)
             seat.Hand = new PlayerHand(sharedCard);
         PeekedCard = null;
-        RefreshUI();
+        RoundStarted?.Invoke(round);
+        NotifyStateChanged();
     }
 
     // 게스트에서 카드가 나뉜 것을 반영한다
@@ -960,14 +995,19 @@ public class GameManager : MonoBehaviour
         if (revealedPrevious != null)
             hand.ReplaceLastCard(revealedPrevious);
         hand.AddCard(card);
-        RefreshUI();
+        CardDealt?.Invoke(seat, hand.Cards.Count - 1);
+        NotifyStateChanged();
     }
 
     // 게스트에서 마지막 카드를 교체한다
     public void MirrorReplaceLast(ActivePlayer seat, Card card)
     {
-        S(seat).Hand?.ReplaceLastCard(card);
-        RefreshUI();
+        PlayerHand hand = S(seat).Hand;
+        if (hand == null) return;
+
+        hand.ReplaceLastCard(card);
+        LastCardReplaced?.Invoke(seat);
+        NotifyStateChanged();
     }
 
     // 게스트에서 돋보기 결과를 보여준다
@@ -975,7 +1015,7 @@ public class GameManager : MonoBehaviour
     {
         PeekedCard = card;
         Debug.Log($"[돋보기] 다음 카드: {card}");
-        UIManager.Instance?.ShowMagnifierResult(card);
+        PeekShown?.Invoke(card);
     }
 
     // 게스트에서 라운드 종료 시 상대 카드를 공개한다
@@ -997,7 +1037,8 @@ public class GameManager : MonoBehaviour
 
         CurrentPhase = GamePhase.RoundEnd;
         CurrentPlayer = ActivePlayer.None;
-        RefreshUI();
+        RoundRevealed?.Invoke();
+        NotifyStateChanged();
     }
 
     // 게스트에서 상대의 에이스 선택을 반영한다
@@ -1007,7 +1048,7 @@ public class GameManager : MonoBehaviour
         if (hostHand == null) return;
 
         ApplyAceMask(hostHand, mask);
-        RefreshUI();
+        NotifyStateChanged();
     }
 
     // 비트마스크대로 에이스 값을 지정한다
@@ -1026,17 +1067,11 @@ public class GameManager : MonoBehaviour
     public void MirrorAceConfirm(ActivePlayer seat)
     {
         S(seat).Hand?.ConfirmAceSelection();
-        RefreshUI();
-    }
-
-    // 화면의 합계 표시를 갱신한다
-    private void RefreshUI()
-    {
-        UIManager.Instance?.RefreshCards(p1Total: TotalText(ActivePlayer.Player1), p2Total: TotalText(ActivePlayer.Player2));
+        NotifyStateChanged();
     }
 
     // 좌석의 합계를 화면에 쓸 글자로 만든다
-    private string TotalText(ActivePlayer seat)
+    public string GetTotalText(ActivePlayer seat)
     {
         PlayerHand hand = S(seat).Hand;
         if (hand == null) return "0";

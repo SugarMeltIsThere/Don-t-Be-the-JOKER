@@ -74,6 +74,8 @@ public class UIManager : MonoBehaviour
 
     private List<AceSlotView> _aceSlots = new List<AceSlotView>();
 
+    private GameManager _gm;
+
     // 싱글턴을 등록한다
     private void Awake()
     {
@@ -135,10 +137,45 @@ public class UIManager : MonoBehaviour
                 OnItemButtonClicked(localPlayer, slotIndex);
             });
         }
+
+        Subscribe();
     }
 
-    // 매 프레임 화면을 갱신한다
-    private void Update()
+    // 구독을 해제한다
+    private void OnDestroy()
+    {
+        Unsubscribe();
+    }
+
+    // 게임 이벤트를 구독하고 구독 전에 지나간 상태를 한 번 그린다
+    private void Subscribe()
+    {
+        _gm = GameManager.Instance;
+        if (_gm == null) return;
+
+        _gm.StateChanged += OnStateChanged;
+        _gm.CharactersChanged += OnCharactersChanged;
+        _gm.PeekShown += ShowMagnifierResult;
+        _gm.GameEnded += OnGameEnded;
+
+        OnCharactersChanged();
+        OnStateChanged();
+    }
+
+    // 게임 이벤트 구독을 해제한다
+    private void Unsubscribe()
+    {
+        if (_gm == null) return;
+
+        _gm.StateChanged -= OnStateChanged;
+        _gm.CharactersChanged -= OnCharactersChanged;
+        _gm.PeekShown -= ShowMagnifierResult;
+        _gm.GameEnded -= OnGameEnded;
+        _gm = null;
+    }
+
+    // 상태가 바뀌면 화면 전체를 갱신한다
+    private void OnStateChanged()
     {
         using (PerfMarkers.UIRefresh.Auto())
         {
@@ -146,6 +183,13 @@ public class UIManager : MonoBehaviour
             UpdatePhaseUI();
             UpdateItemSlots();
         }
+    }
+
+    // 게임이 끝나면 상대 이탈이 아닌 경우에만 결과를 처리한다
+    private void OnGameEnded(GameEndReason reason)
+    {
+        if (reason == GameEndReason.OpponentLeft) return;
+        HandleGameEnd();
     }
     // 칩과 팟과 베팅 표시를 갱신한다
     private void Refresh()
@@ -182,6 +226,13 @@ public class UIManager : MonoBehaviour
 
         if (_opponentBetText != null)
             _opponentBetText.text = opponentBet.ToString();
+
+        ActivePlayer opponent = localPlayer == ActivePlayer.Player1
+            ? ActivePlayer.Player2
+            : ActivePlayer.Player1;
+
+        _p1TotalText.text = gm.GetTotalText(localPlayer);
+        _p2TotalText.text = gm.GetTotalText(opponent);
 
         RefreshCardImages(gm, localPlayer);
 
@@ -260,38 +311,25 @@ public class UIManager : MonoBehaviour
         _p1DieButton.interactable = isP1Turn && gm.CanDie;
     }
 
-    // 캐릭터 이름을 표시한다
-    public void SetCharacterInfo(string myCharacter, string opponentCharacter)
+    // 양쪽 캐릭터 이름을 표시한다
+    private void OnCharactersChanged()
     {
-        if (_myCharacterText != null)
-            _myCharacterText.text = myCharacter.ToUpperInvariant();
+        GameManager gm = GameManager.Instance;
+        if (gm == null) return;
 
-        if (_opponentCharacterText != null)
-            _opponentCharacterText.text = opponentCharacter.ToUpperInvariant();
-    }
-
-    // 카드 합계를 표시한다
-    public void RefreshCards(string p1Total, string p2Total)
-    {
         ActivePlayer localPlayer = NetworkGameManager.Instance != null
             ? NetworkGameManager.Instance.LocalPlayer
             : ActivePlayer.Player1;
 
-        string myTotal, opponentTotal;
+        ActivePlayer opponent = localPlayer == ActivePlayer.Player1
+            ? ActivePlayer.Player2
+            : ActivePlayer.Player1;
 
-        if (localPlayer == ActivePlayer.Player1)
-        {
-            myTotal = p1Total;
-            opponentTotal = p2Total;
-        }
-        else
-        {
-            myTotal = p2Total;
-            opponentTotal = p1Total;
-        }
+        if (_myCharacterText != null)
+            _myCharacterText.text = gm.GetCharacterName(localPlayer).ToUpperInvariant();
 
-        _p1TotalText.text = myTotal;
-        _p2TotalText.text = opponentTotal;
+        if (_opponentCharacterText != null)
+            _opponentCharacterText.text = gm.GetCharacterName(opponent).ToUpperInvariant();
     }
 
     // 레이즈 패널을 연다
@@ -356,9 +394,6 @@ public class UIManager : MonoBehaviour
             case GamePhase.Betting:
                 SetBettingButtonsVisible(true);
                 HideAceSelectionPanel();
-                break;
-            case GamePhase.GameEnd:
-                HandleGameEnd();
                 break;
             case GamePhase.ItemDiscard:
                 ShowItemDiscardPanel();
@@ -459,20 +494,9 @@ public class UIManager : MonoBehaviour
         _aceSlots.Clear();
     }
 
-    private bool _gameEndHandled = false;
-
-    // 게임 종료 처리를 건너뛰게 한다
-    public void SuppressGameEndHandling()
-    {
-        _gameEndHandled = true;
-    }
-
     // 결과 문구를 남기고 대기실로 돌아간다
     private void HandleGameEnd()
     {
-        if (_gameEndHandled) return;
-        _gameEndHandled = true;
-
         ActivePlayer winner = GameManager.Instance.Player1Chips > 0
             ? ActivePlayer.Player1
             : ActivePlayer.Player2;
@@ -525,18 +549,13 @@ public class UIManager : MonoBehaviour
     private void OnMagnifierClicked(ActivePlayer player)
     {
         if (NetworkGameManager.Instance != null)
-        {
             NetworkGameManager.Instance.RequestUseMagnifier(player);
-        }
         else
-        {
-            Card next = GameManager.Instance.OnUseMagnifier(player);
-            ShowMagnifierResult(next);
-        }
+            GameManager.Instance.OnUseMagnifier(player);
     }
 
     // 돋보기로 본 카드를 기록한다
-    public void ShowMagnifierResult(Card card)
+    private void ShowMagnifierResult(Card card)
     {
         if (card == null) return;
 
