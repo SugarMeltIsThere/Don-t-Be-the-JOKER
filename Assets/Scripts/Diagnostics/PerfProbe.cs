@@ -10,6 +10,7 @@ public class PerfProbe : MonoBehaviour
     private const string GameSceneName = "GameScene";
 
     private ProfilerRecorder _uiRecorder;
+    private ProfilerRecorder _tableRecorder;
     private ProfilerRecorder _gcBytesRecorder;
     private ProfilerRecorder _gcCountRecorder;
     private ProfilerRecorder _mainThreadRecorder;
@@ -22,15 +23,17 @@ public class PerfProbe : MonoBehaviour
     {
         public int Frames;
         public double UiNs;
+        public double TableNs;
         public double GcBytes;
         public double GcCount;
         public double MainNs;
 
         // 한 프레임의 값을 누적한다
-        public void Add(long uiNs, long gcBytes, long gcCount, long mainNs)
+        public void Add(long uiNs, long tableNs, long gcBytes, long gcCount, long mainNs)
         {
             Frames++;
             UiNs += uiNs;
+            TableNs += tableNs;
             GcBytes += gcBytes;
             GcCount += gcCount;
             MainNs += mainNs;
@@ -51,12 +54,13 @@ public class PerfProbe : MonoBehaviour
     {
         _ = PerfMarkers.UIRefresh;
         _uiRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, PerfMarkers.UIRefreshName);
+        _tableRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Scripts, PerfMarkers.TableSyncName);
         _gcBytesRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocated In Frame");
         _gcCountRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Memory, "GC Allocation In Frame Count");
         _mainThreadRecorder = ProfilerRecorder.StartNew(ProfilerCategory.Internal, "Main Thread");
         _windowEndsAt = Time.unscaledTime + WindowSeconds;
 
-        Debug.Log($"[PERF] start ui={_uiRecorder.Valid} gcBytes={_gcBytesRecorder.Valid} gcCount={_gcCountRecorder.Valid} main={_mainThreadRecorder.Valid}");
+        Debug.Log($"[PERF] start ui={_uiRecorder.Valid} table={_tableRecorder.Valid} gcBytes={_gcBytesRecorder.Valid} gcCount={_gcCountRecorder.Valid} main={_mainThreadRecorder.Valid}");
         SceneManager.activeSceneChanged += OnSceneChanged;
     }
 
@@ -67,6 +71,7 @@ public class PerfProbe : MonoBehaviour
         FlushTotal("disable");
 
         _uiRecorder.Dispose();
+        _tableRecorder.Dispose();
         _gcBytesRecorder.Dispose();
         _gcCountRecorder.Dispose();
         _mainThreadRecorder.Dispose();
@@ -78,12 +83,13 @@ public class PerfProbe : MonoBehaviour
         if (SceneManager.GetActiveScene().name != GameSceneName) return;
 
         long ui = _uiRecorder.Valid ? _uiRecorder.LastValue : 0;
+        long table = _tableRecorder.Valid ? _tableRecorder.LastValue : 0;
         long gcBytes = _gcBytesRecorder.Valid ? _gcBytesRecorder.LastValue : 0;
         long gcCount = _gcCountRecorder.Valid ? _gcCountRecorder.LastValue : 0;
         long main = _mainThreadRecorder.Valid ? _mainThreadRecorder.LastValue : 0;
 
-        _window.Add(ui, gcBytes, gcCount, main);
-        _total.Add(ui, gcBytes, gcCount, main);
+        _window.Add(ui, table, gcBytes, gcCount, main);
+        _total.Add(ui, table, gcBytes, gcCount, main);
 
         if (Time.unscaledTime < _windowEndsAt) return;
 
@@ -114,8 +120,8 @@ public class PerfProbe : MonoBehaviour
     {
         double n = w.Frames;
         return string.Format(CultureInfo.InvariantCulture,
-            "[PERF] {0} phase={1} frames={2} ui_ms={3:F4} gc_bytes={4:F1} gc_count={5:F2} main_ms={6:F3}",
-            label, phase, w.Frames, w.UiNs / n / 1e6, w.GcBytes / n, w.GcCount / n, w.MainNs / n / 1e6);
+            "[PERF] {0} phase={1} frames={2} ui_ms={3:F4} table_ms={4:F4} gc_bytes={5:F1} gc_count={6:F2} main_ms={7:F3}",
+            label, phase, w.Frames, w.UiNs / n / 1e6, w.TableNs / n / 1e6, w.GcBytes / n, w.GcCount / n, w.MainNs / n / 1e6);
     }
 }
 #endif
