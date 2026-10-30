@@ -4,15 +4,9 @@ public class BellInteractable : Interactable
     public override bool CanInteract()
     {
         GameManager gm = GameManager.Instance;
-        return gm != null && gm.CanStand && IsLocalTurn(gm);
+        return gm != null && gm.CanStand && PlayerActions.IsLocalTurn;
     }
 
     // 스탠드를 요청한다
-    public override void Interact()
-    {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestStand();
-        else
-            GameManager.Instance.OnStand();
-    }
+    public override void Interact() => PlayerActions.Stand();
 }

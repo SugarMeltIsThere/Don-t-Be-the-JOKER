@@ -222,6 +222,9 @@ public class GameManager : MonoBehaviour
         StartNewRound();
     }
 
+    // 좌석의 에이스 선택이 확정됐는지 확인한다
+    public bool IsAceConfirmed(ActivePlayer seat) => S(seat).Hand != null && S(seat).Hand.AceSelectionConfirmed;
+
     // 좌석의 캐릭터 이름을 반환한다
     public string GetCharacterName(ActivePlayer seat) => S(seat).Character?.GetName() ?? "-";
 

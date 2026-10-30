@@ -68,6 +68,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button _discardButton3;
     [SerializeField] private Button _discardNewButton;
 
+    [Header("Phase Guide")]
+    [SerializeField] private TextMeshProUGUI _phaseText;
+
     [Header("Item Notice")]
     [SerializeField] private TextMeshProUGUI _itemNoticeText;
     [SerializeField] private float _itemNoticeSeconds = 2.5f;
@@ -120,28 +123,12 @@ public class UIManager : MonoBehaviour
         if (_cardSpriteDatabase == null) Debug.LogWarning("[UI] Card Sprite Database가 인스펙터에 연결되지 않았습니다. 카드가 그려지지 않습니다.");
         if (_sharedCardImage == null) Debug.LogWarning("[UI] Shared Card Image가 인스펙터에 연결되지 않았습니다. 공유 카드가 갱신되지 않습니다.");
 
-        _p1AceConfirmButton.onClick.AddListener(() =>
-        {
-            ActivePlayer localPlayer = NetworkGameManager.Instance != null
-                ? NetworkGameManager.Instance.LocalPlayer
-                : ActivePlayer.Player1;
-
-            if (NetworkGameManager.Instance != null)
-                NetworkGameManager.Instance.RequestAceConfirmed(localPlayer);
-            else
-                GameManager.Instance.OnAceSelectionConfirmed(localPlayer);
-        });
+        _p1AceConfirmButton.onClick.AddListener(PlayerActions.ConfirmAces);
 
         for (int i = 0; i < _myItemButtons.Length; i++)
         {
             int slotIndex = i;
-            _myItemButtons[i].onClick.AddListener(() =>
-            {
-                ActivePlayer localPlayer = NetworkGameManager.Instance != null
-                    ? NetworkGameManager.Instance.LocalPlayer
-                    : ActivePlayer.Player1;
-                OnItemButtonClicked(localPlayer, slotIndex);
-            });
+            _myItemButtons[i].onClick.AddListener(() => PlayerActions.UseItem(slotIndex));
         }
 
         Subscribe();
@@ -199,11 +186,7 @@ public class UIManager : MonoBehaviour
     {
         if (_itemNoticeText == null) return;
 
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-
-        string who = seat == localPlayer ? "YOU" : "OPPONENT";
+        string who = seat == PlayerActions.LocalSeat ? "YOU" : "OPPONENT";
         _itemNoticeText.text = $"{who} USED {new Item(type).GetName().ToUpperInvariant()}";
         _itemNoticeText.gameObject.SetActive(true);
 
@@ -231,9 +214,7 @@ public class UIManager : MonoBehaviour
         GameManager gm = GameManager.Instance;
         if (gm == null) return;
 
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
+        ActivePlayer localPlayer = PlayerActions.LocalSeat;
 
         int myChips = localPlayer == ActivePlayer.Player1
             ? gm.Player1Chips
@@ -261,16 +242,31 @@ public class UIManager : MonoBehaviour
         if (_opponentBetText != null)
             _opponentBetText.text = opponentBet.ToString();
 
-        ActivePlayer opponent = localPlayer == ActivePlayer.Player1
-            ? ActivePlayer.Player2
-            : ActivePlayer.Player1;
-
         _p1TotalText.text = gm.GetTotalText(localPlayer);
-        _p2TotalText.text = gm.GetTotalText(opponent);
+        _p2TotalText.text = gm.GetTotalText(PlayerActions.OpponentSeat);
 
         RefreshCardImages(gm, localPlayer);
-
+        UpdatePhaseText(gm);
         UpdateButtons(gm);
+    }
+
+    // 지금 단계와 차례를 한 줄로 안내한다
+    private void UpdatePhaseText(GameManager gm)
+    {
+        if (_phaseText == null) return;
+
+        bool myTurn = PlayerActions.IsLocalTurn;
+        _phaseText.text = gm.CurrentPhase switch
+        {
+            GamePhase.Draw => myTurn ? "YOUR TURN · DRAW" : "OPPONENT'S TURN",
+            GamePhase.AceSelection => gm.IsAceConfirmed(PlayerActions.LocalSeat) ? "WAITING FOR OPPONENT" : "SELECT ACES",
+            GamePhase.Betting => myTurn ? "BETTING · YOUR TURN" : "BETTING · OPPONENT'S TURN",
+            GamePhase.CardReveal => "REVEAL",
+            GamePhase.RoundEnd => "REVEAL",
+            GamePhase.ItemDiscard => "ITEM DISCARD",
+            GamePhase.GameEnd => "GAME OVER",
+            _ => string.Empty
+        };
     }
 
     // 공유 카드와 양쪽 손패를 그린다
@@ -324,25 +320,13 @@ public class UIManager : MonoBehaviour
     // 지금 가능한 행동만 버튼을 켠다
     private void UpdateButtons(GameManager gm)
     {
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.None;
+        bool isMyTurn = PlayerActions.IsLocalTurn;
 
-        bool isP1Turn = gm.CurrentPlayer == ActivePlayer.Player1;
-        bool isP2Turn = gm.CurrentPlayer == ActivePlayer.Player2;
-
-        if (localPlayer != ActivePlayer.None)
-        {
-            bool isMyTurn = gm.CurrentPlayer == localPlayer;
-            isP1Turn = isMyTurn;
-            isP2Turn = isMyTurn;
-        }
-
-        _p1HitButton.interactable = isP1Turn && gm.CanHit;
-        _p1StandButton.interactable = isP1Turn && gm.CanStand;
-        _p1RaiseButton.interactable = isP1Turn && gm.CanRaise;
-        _p1CallButton.interactable = isP1Turn && gm.CanCall;
-        _p1DieButton.interactable = isP1Turn && gm.CanDie;
+        _p1HitButton.interactable = isMyTurn && gm.CanHit;
+        _p1StandButton.interactable = isMyTurn && gm.CanStand;
+        _p1RaiseButton.interactable = isMyTurn && gm.CanRaise;
+        _p1CallButton.interactable = isMyTurn && gm.CanCall;
+        _p1DieButton.interactable = isMyTurn && gm.CanDie;
     }
 
     // 양쪽 캐릭터 이름을 표시한다
@@ -351,19 +335,11 @@ public class UIManager : MonoBehaviour
         GameManager gm = GameManager.Instance;
         if (gm == null) return;
 
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-
-        ActivePlayer opponent = localPlayer == ActivePlayer.Player1
-            ? ActivePlayer.Player2
-            : ActivePlayer.Player1;
-
         if (_myCharacterText != null)
-            _myCharacterText.text = gm.GetCharacterName(localPlayer).ToUpperInvariant();
+            _myCharacterText.text = gm.GetCharacterName(PlayerActions.LocalSeat).ToUpperInvariant();
 
         if (_opponentCharacterText != null)
-            _opponentCharacterText.text = gm.GetCharacterName(opponent).ToUpperInvariant();
+            _opponentCharacterText.text = gm.GetCharacterName(PlayerActions.OpponentSeat).ToUpperInvariant();
     }
 
     // 레이즈 패널을 연다
@@ -394,11 +370,7 @@ public class UIManager : MonoBehaviour
     // 레이즈를 확정한다
     public void ConfirmRaise(ActivePlayer player)
     {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestRaise(_p1RaiseAmount);
-        else
-            GameManager.Instance.OnRaise(_p1RaiseAmount);
-
+        PlayerActions.Raise(_p1RaiseAmount);
         CloseRaisePanel(player);
     }
     // 단계에 맞는 패널을 보여준다
@@ -454,10 +426,7 @@ public class UIManager : MonoBehaviour
     // 에이스마다 선택 버튼을 만든다
     private void GenerateAceButtons()
     {
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-
+        ActivePlayer localPlayer = PlayerActions.LocalSeat;
         GameManager gm = GameManager.Instance;
 
         foreach (AceSlotView slot in _aceSlots)
@@ -507,10 +476,7 @@ public class UIManager : MonoBehaviour
                 if (tmp != null)
                     tmp.text = (isEleven ? 11 : 1).ToString();
 
-                if (NetworkGameManager.Instance != null)
-                    NetworkGameManager.Instance.RequestAceValueChanged(localPlayer, index, isEleven);
-                else
-                    GameManager.Instance.OnAceValueChanged(localPlayer, index, isEleven);
+                PlayerActions.SetAce(index, isEleven);
             });
 
             _aceSlots.Add(view);
@@ -535,11 +501,7 @@ public class UIManager : MonoBehaviour
             ? ActivePlayer.Player1
             : ActivePlayer.Player2;
 
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-
-        string resultText = winner == localPlayer ? "YOU WIN!" : "YOU LOSE!";
+        string resultText = winner == PlayerActions.LocalSeat ? "YOU WIN!" : "YOU LOSE!";
 
         if (NetworkManager.Instance != null)
             NetworkManager.Instance.PendingGameResultText = resultText;
@@ -547,47 +509,6 @@ public class UIManager : MonoBehaviour
         if (NetworkManager.Instance != null) NetworkManager.Instance.ReturnToWaitingRoom();
         else SceneManager.LoadScene("LobbyScene");
     }
-    // 누른 아이템을 사용한다
-    private void OnItemButtonClicked(ActivePlayer player, int index)
-    {
-        GameManager gm = GameManager.Instance;
-        var items = player == ActivePlayer.Player1
-            ? gm.Player1Items
-            : gm.Player2Items;
-
-        if (index >= items.Count) return;
-
-        ItemType type = items[index].Type;
-
-        switch (type)
-        {
-            case ItemType.Magnifier:
-                OnMagnifierClicked(player);
-                break;
-            case ItemType.Flash:
-                if (NetworkGameManager.Instance != null)
-                    NetworkGameManager.Instance.RequestUseFlash(player);
-                else
-                    gm.OnUseFlash(player);
-                break;
-            case ItemType.Bribe:
-                if (NetworkGameManager.Instance != null)
-                    NetworkGameManager.Instance.RequestUseBribe(player);
-                else
-                    gm.OnUseBribe(player);
-                break;
-        }
-    }
-
-    // 돋보기를 사용한다
-    private void OnMagnifierClicked(ActivePlayer player)
-    {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestUseMagnifier(player);
-        else
-            GameManager.Instance.OnUseMagnifier(player);
-    }
-
     // 돋보기로 본 카드를 기록한다
     private void ShowMagnifierResult(Card card)
     {
@@ -597,41 +518,18 @@ public class UIManager : MonoBehaviour
     }
 
     // 폐기할 아이템을 요청한다
-    private void RequestDiscard(int discardIndex)
-    {
-        ActivePlayer requester = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : _discardTargetPlayer;
+    private void RequestDiscard(int discardIndex) => PlayerActions.Discard(discardIndex);
 
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestItemDiscard(requester, discardIndex);
-        else
-            GameManager.Instance.OnItemDiscard(requester, discardIndex);
-    }
-
-    // 아이템 슬롯 표시를 갱신한다
+    // 2D 아이템 슬롯이 켜져 있을 때만 표시를 갱신한다
     private void UpdateItemSlots()
     {
         GameManager gm = GameManager.Instance;
-        if (gm == null) return;
+        if (gm == null || _myItemButtons.Length == 0) return;
+        if (!_myItemButtons[0].transform.parent.gameObject.activeInHierarchy) return;
 
-        ActivePlayer localPlayer = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-
-        ActivePlayer opponent = localPlayer == ActivePlayer.Player1
-            ? ActivePlayer.Player2
-            : ActivePlayer.Player1;
-
-        var myItems = localPlayer == ActivePlayer.Player1
-            ? gm.Player1Items
-            : gm.Player2Items;
-
-        var opponentItems = opponent == ActivePlayer.Player1
-            ? gm.Player1Items
-            : gm.Player2Items;
-
-        bool isMyTurn = gm.CurrentPlayer == localPlayer;
+        var myItems = PlayerActions.ItemsOf(PlayerActions.LocalSeat);
+        var opponentItems = PlayerActions.ItemsOf(PlayerActions.OpponentSeat);
+        bool isMyTurn = PlayerActions.IsLocalTurn;
 
         for (int i = 0; i < _myItemButtons.Length; i++)
         {
@@ -642,7 +540,7 @@ public class UIManager : MonoBehaviour
                 ItemType type = myItems[i].Type;
 
                 button.gameObject.SetActive(true);
-                button.interactable = isMyTurn && CanUseItem(type);
+                button.interactable = isMyTurn && PlayerActions.CanUseInPhase(type);
 
                 Image image = button.GetComponent<Image>();
                 if (image != null)
@@ -682,27 +580,13 @@ public class UIManager : MonoBehaviour
         };
     }
 
-    // 지금 단계에서 쓸 수 있는 아이템인지 확인한다
-    private bool CanUseItem(ItemType type)
-    {
-        GameManager gm = GameManager.Instance;
-        return type switch
-        {
-            ItemType.Magnifier => gm.CurrentPhase == GamePhase.Draw,
-            ItemType.Bribe => gm.CurrentPhase == GamePhase.Draw,
-            ItemType.Flash => gm.CurrentPhase == GamePhase.Betting,
-            _ => false
-        };
-    }
-
     // 아이템 폐기 패널을 보여준다
     private void ShowItemDiscardPanel()
     {
         GameManager gm = GameManager.Instance;
         ActivePlayer pendingPlayer = gm.PendingItemPlayer;
 
-        bool isMine = NetworkGameManager.Instance != null &&
-                      NetworkGameManager.Instance.LocalPlayer == pendingPlayer;
+        bool isMine = PlayerActions.LocalSeat == pendingPlayer;
 
         if (!isMine)
         {
@@ -764,41 +648,22 @@ public class UIManager : MonoBehaviour
         if (_opponentDiscardWaitingPanel != null) _opponentDiscardWaitingPanel.SetActive(false);
     }
     // 카드 받기를 요청한다
-    private void OnHitClicked()
-    {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestHit();
-        else
-            GameManager.Instance.OnHit();
-    }
+    private void OnHitClicked() => PlayerActions.Hit();
 
     // 스탠드를 요청한다
-    private void OnStandClicked()
-    {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestStand();
-        else
-            GameManager.Instance.OnStand();
-    }
+    private void OnStandClicked() => PlayerActions.Stand();
+
     // 콜을 요청한다
     private void OnCallClicked()
     {
         CloseRaisePanel(ActivePlayer.Player1);
-
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestCall();
-        else
-            GameManager.Instance.OnCall();
+        PlayerActions.Call();
     }
 
     // 다이를 요청한다
     private void OnDieClicked()
     {
         CloseRaisePanel(ActivePlayer.Player1);
-
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestDie();
-        else
-            GameManager.Instance.OnDie();
+        PlayerActions.Die();
     }
 }

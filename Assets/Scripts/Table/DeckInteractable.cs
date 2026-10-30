@@ -4,15 +4,9 @@ public class DeckInteractable : Interactable
     public override bool CanInteract()
     {
         GameManager gm = GameManager.Instance;
-        return gm != null && gm.CanHit && IsLocalTurn(gm);
+        return gm != null && gm.CanHit && PlayerActions.IsLocalTurn;
     }
 
     // 카드 받기를 요청한다
-    public override void Interact()
-    {
-        if (NetworkGameManager.Instance != null)
-            NetworkGameManager.Instance.RequestHit();
-        else
-            GameManager.Instance.OnHit();
-    }
+    public override void Interact() => PlayerActions.Hit();
 }

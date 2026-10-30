@@ -29,13 +29,4 @@ public abstract class Interactable : MonoBehaviour
         _highlighted = highlighted;
         _renderer.sharedMaterial = highlighted ? _highlightMaterial : _normalMaterial;
     }
-
-    // 지금이 로컬 플레이어의 차례인지 확인한다
-    protected static bool IsLocalTurn(GameManager gm)
-    {
-        ActivePlayer local = NetworkGameManager.Instance != null
-            ? NetworkGameManager.Instance.LocalPlayer
-            : ActivePlayer.Player1;
-        return gm.CurrentPlayer == local;
-    }
 }

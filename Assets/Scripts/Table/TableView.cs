@@ -31,9 +31,7 @@ public class TableView : MonoBehaviour
 
     private static readonly Quaternion FaceDownTurn = Quaternion.Euler(0f, 0f, 180f);
 
-    private static ActivePlayer LocalSeat => NetworkGameManager.Instance != null
-        ? NetworkGameManager.Instance.LocalPlayer
-        : ActivePlayer.Player1;
+    private static ActivePlayer LocalSeat => PlayerActions.LocalSeat;
 
     // 카드 풀을 미리 채운다
     private void Awake()
