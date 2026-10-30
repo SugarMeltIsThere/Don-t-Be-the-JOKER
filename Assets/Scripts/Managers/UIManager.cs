@@ -140,9 +140,12 @@ public class UIManager : MonoBehaviour
     // 매 프레임 화면을 갱신한다
     private void Update()
     {
-        Refresh();
-        UpdatePhaseUI();
-        UpdateItemSlots();
+        using (PerfMarkers.UIRefresh.Auto())
+        {
+            Refresh();
+            UpdatePhaseUI();
+            UpdateItemSlots();
+        }
     }
     // 칩과 팟과 베팅 표시를 갱신한다
     private void Refresh()
