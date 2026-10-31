@@ -1,3 +1,4 @@
+﻿using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
@@ -20,11 +21,25 @@ public static class MeshyAssetProcessor
     // Meshy FBX 하나를 폴리곤 감소, 텍스처 압축, URP Lit 머티리얼 생성까지 처리해 결과 경로를 돌려준다
     public static Result Process(string fbxPath, string assetName, int targetTriangles, int maxTextureSize, float smoothness, bool preserveUVSeams)
     {
+        return Process(fbxPath, assetName, targetTriangles, maxTextureSize, smoothness, preserveUVSeams, 0f, null);
+    }
+
+    // 가장 큰 묶음 대비 삼각형 비율이 기준보다 작은 떨어진 조각을 지운 뒤 같은 처리를 한다
+    public static Result Process(string fbxPath, string assetName, int targetTriangles, int maxTextureSize, float smoothness, bool preserveUVSeams, float minComponentShare)
+    {
+        return Process(fbxPath, assetName, targetTriangles, maxTextureSize, smoothness, preserveUVSeams, minComponentShare, null);
+    }
+
+    // 떨어진 작은 조각을 지우고 메시 공간 상자들 밖의 삼각형을 잘라낸 뒤 같은 처리를 한다
+    public static Result Process(string fbxPath, string assetName, int targetTriangles, int maxTextureSize, float smoothness, bool preserveUVSeams, float minComponentShare, Bounds[] keepBoxes)
+    {
         EnsureFolder(OutputRoot);
         Result result = new Result();
 
         Mesh source = LoadMesh(fbxPath);
         result.SourceTriangles = source.triangles.Length / 3;
+        if (minComponentShare > 0f) source = RemoveSmallComponents(source, minComponentShare);
+        if (keepBoxes != null) source = ClipToBoxes(source, keepBoxes);
 
         Mesh simplified = Simplify(source, targetTriangles, preserveUVSeams);
         simplified.name = assetName;
@@ -73,6 +88,119 @@ public static class MeshyAssetProcessor
         visual.transform.localScale = Vector3.one * scale;
         visual.transform.localPosition = new Vector3(-rotated.center.x, -rotated.min.y, -rotated.center.z) * scale;
         return visual;
+    }
+
+    // 위치가 같은 정점을 하나로 보고 서로 이어진 삼각형 묶음마다 삼각형 번호 목록을 돌려준다
+    public static List<List<int>> FindComponents(Mesh mesh)
+    {
+        Vector3[] vertices = mesh.vertices;
+        int[] triangles = mesh.triangles;
+        Dictionary<Vector3, int> welded = new Dictionary<Vector3, int>();
+        int[] key = new int[vertices.Length];
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            if (!welded.TryGetValue(vertices[i], out int id)) { id = welded.Count; welded.Add(vertices[i], id); }
+            key[i] = id;
+        }
+
+        int[] parent = new int[welded.Count];
+        for (int i = 0; i < parent.Length; i++) parent[i] = i;
+        for (int t = 0; t < triangles.Length; t += 3)
+        {
+            Union(parent, key[triangles[t]], key[triangles[t + 1]]);
+            Union(parent, key[triangles[t]], key[triangles[t + 2]]);
+        }
+
+        Dictionary<int, List<int>> groups = new Dictionary<int, List<int>>();
+        for (int t = 0; t < triangles.Length / 3; t++)
+        {
+            int root = Find(parent, key[triangles[t * 3]]);
+            if (!groups.TryGetValue(root, out List<int> list)) { list = new List<int>(); groups.Add(root, list); }
+            list.Add(t);
+        }
+        List<List<int>> result = new List<List<int>>(groups.Values);
+        result.Sort((a, b) => b.Count.CompareTo(a.Count));
+        return result;
+    }
+
+    // 고른 삼각형 묶음만 남긴 새 메시를 만든다
+    public static Mesh KeepComponents(Mesh source, List<List<int>> components, IEnumerable<int> keep)
+    {
+        int[] triangles = source.triangles;
+        Vector3[] vertices = source.vertices;
+        Vector3[] normals = source.normals;
+        Vector2[] uvs = source.uv;
+        Dictionary<int, int> remap = new Dictionary<int, int>();
+        List<Vector3> newVertices = new List<Vector3>();
+        List<Vector3> newNormals = new List<Vector3>();
+        List<Vector2> newUvs = new List<Vector2>();
+        List<int> kept = new List<int>();
+        foreach (int index in keep)
+            foreach (int t in components[index])
+                for (int k = 0; k < 3; k++)
+                {
+                    int v = triangles[t * 3 + k];
+                    if (!remap.TryGetValue(v, out int n))
+                    {
+                        n = newVertices.Count;
+                        remap.Add(v, n);
+                        newVertices.Add(vertices[v]);
+                        if (normals.Length > 0) newNormals.Add(normals[v]);
+                        if (uvs.Length > 0) newUvs.Add(uvs[v]);
+                    }
+                    kept.Add(n);
+                }
+
+        Mesh mesh = new Mesh { name = source.name };
+        mesh.indexFormat = newVertices.Count > 65535 ? UnityEngine.Rendering.IndexFormat.UInt32 : UnityEngine.Rendering.IndexFormat.UInt16;
+        mesh.SetVertices(newVertices);
+        if (newNormals.Count > 0) mesh.SetNormals(newNormals);
+        if (newUvs.Count > 0) mesh.SetUVs(0, newUvs);
+        mesh.SetTriangles(kept, 0);
+        if (newNormals.Count == 0) mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // 합집합 찾기에서 두 묶음을 합친다
+    private static void Union(int[] parent, int a, int b)
+    {
+        a = Find(parent, a);
+        b = Find(parent, b);
+        if (a != b) parent[b] = a;
+    }
+
+    // 합집합 찾기에서 대표 번호를 찾으며 경로를 줄인다
+    private static int Find(int[] parent, int a)
+    {
+        while (parent[a] != a) { parent[a] = parent[parent[a]]; a = parent[a]; }
+        return a;
+    }
+
+    // 가장 큰 묶음 대비 삼각형 비율이 기준 이상인 묶음만 남긴다
+    private static Mesh RemoveSmallComponents(Mesh source, float minShare)
+    {
+        List<List<int>> components = FindComponents(source);
+        List<int> keep = new List<int>();
+        for (int i = 0; i < components.Count; i++)
+            if (components[i].Count >= components[0].Count * minShare) keep.Add(i);
+        return KeepComponents(source, components, keep);
+    }
+
+    // 세 정점이 모두 같은 상자 안에 있는 삼각형만 남긴다
+    private static Mesh ClipToBoxes(Mesh source, Bounds[] boxes)
+    {
+        Vector3[] vertices = source.vertices;
+        int[] triangles = source.triangles;
+        List<int> inside = new List<int>();
+        for (int t = 0; t < triangles.Length / 3; t++)
+            foreach (Bounds box in boxes)
+                if (box.Contains(vertices[triangles[t * 3]]) && box.Contains(vertices[triangles[t * 3 + 1]]) && box.Contains(vertices[triangles[t * 3 + 2]]))
+                {
+                    inside.Add(t);
+                    break;
+                }
+        return KeepComponents(source, new List<List<int>> { inside }, new[] { 0 });
     }
 
     // FBX 안에서 첫 메시를 찾는다

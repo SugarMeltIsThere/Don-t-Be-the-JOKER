@@ -2,19 +2,21 @@ using UnityEngine;
 
 public class MagnifierView : MonoBehaviour
 {
-    private const float CardScaleInLens = 0.85f;
-    private const float CardDepthInLens = 0.002f;
+    private const float RevealLift = 0.0006f;
 
     [SerializeField] private Transform _lens;
-    [SerializeField] private Transform _deckTop;
-    [SerializeField] private Camera _camera;
+    [SerializeField] private Transform _shoeCard;
     [SerializeField] private CardSpriteDatabase _cardSpriteDatabase;
     [SerializeField] private Material _cardMaterial;
-    [SerializeField] private float _hoverDistance = 0.08f;
-    [SerializeField] private float _readingDistanceFromCamera = 0.38f;
-    [SerializeField] private Vector2 _readingViewportPoint = new Vector2(0.5f, 0.5f);
-    [SerializeField] private Vector3 _restOffset = new Vector3(-0.08f, 0.22f, -0.12f);
-    [SerializeField] private float _moveDuration = 0.4f;
+    [SerializeField] private Material _revealMaterial;
+    [SerializeField] private float _hoverHeight = 0.035f;
+    [SerializeField] private float _lensScale = 1.6f;
+    [SerializeField] private float _lensCenterOffset = 0.025f;
+    [SerializeField] private Vector3 _restOffset = new Vector3(-0.3f, 0.05f, -0.3f);
+    [SerializeField] private float _moveDuration = 0.45f;
+    [SerializeField] private float _holdSeconds = 1f;
+    [SerializeField] private float _focusDistance = 0.17f;
+    [SerializeField] private float _focusNormalWeight = 0.6f;
 
     private CardView _peekCard;
     private GameManager _gm;
@@ -22,18 +24,21 @@ public class MagnifierView : MonoBehaviour
     private Vector3 _toPosition;
     private Quaternion _fromRotation;
     private Quaternion _toRotation;
+    private Vector3 _fromScale;
+    private Vector3 _toScale;
     private float _elapsed;
+    private bool _moving;
     private bool _hideWhenArrived;
+    private float _returnTimer;
+    private TableCamera _tableCamera;
 
-    // 렌즈 안에 비칠 카드를 렌즈의 자식으로 만들고 렌즈를 숨긴다
+    // 슈 맨 위에 뒷면 카드를 놓고, 같은 자리에 렌즈 안에서만 보이는 앞면 카드를 준비한 뒤 렌즈를 숨긴다
     private void Awake()
     {
-        if (_camera == null) _camera = Camera.main;
+        CardView.Create(_shoeCard, _cardMaterial, _cardSpriteDatabase);
 
-        _peekCard = CardView.Create(_lens, _cardMaterial, _cardSpriteDatabase);
-        _peekCard.transform.localPosition = new Vector3(0f, -CardDepthInLens, 0f);
-        _peekCard.transform.localRotation = Quaternion.identity;
-        _peekCard.transform.localScale = Vector3.one * CardScaleInLens;
+        _peekCard = CardView.Create(_shoeCard, _revealMaterial, _cardSpriteDatabase);
+        _peekCard.transform.localPosition = new Vector3(0f, RevealLift, 0f);
         _peekCard.gameObject.SetActive(false);
 
         _lens.gameObject.SetActive(false);
@@ -43,6 +48,7 @@ public class MagnifierView : MonoBehaviour
     private void Start()
     {
         enabled = false;
+        if (Camera.main != null) _tableCamera = Camera.main.GetComponent<TableCamera>();
 
         _gm = GameManager.Instance;
         if (_gm == null) return;
@@ -67,22 +73,42 @@ public class MagnifierView : MonoBehaviour
         _gm = null;
     }
 
-    // 누가 돋보기를 쓰든 렌즈를 덱 바로 위로 가져온다
+    // 누가 돋보기를 쓰든 돋보기를 슈 맨 위 카드 바로 위로 가져와 잠깐 띄웠다가 돌려보낸다
     private void OnItemUsed(ActivePlayer seat, ItemType type)
     {
-        if (type != ItemType.Magnifier || _peekCard.gameObject.activeSelf) return;
-        MoveLens(PointOnSightLine(_hoverDistance), hideWhenArrived: false);
+        if (type != ItemType.Magnifier) return;
+        HoverOverShoe();
+        StartReturnTimer();
     }
 
-    // 돋보기를 쓴 사람의 화면에서만 렌즈를 덱에서 눈앞 화면 가운데로 들어 올리고 렌즈 안에 덱 맨 위 카드를 비춘다
+    // 돋보기를 쓴 사람의 화면에서만 시선을 카드 쪽으로 비스듬히 당기고 렌즈 너머로 앞면이 보이게 한다
     private void OnPeekShown(Card card)
     {
         _peekCard.SetCard(card, faceUp: true);
         _peekCard.gameObject.SetActive(true);
+        HoverOverShoe();
+        StartReturnTimer();
+        if (_tableCamera == null) return;
 
-        Vector3 reading = _camera.ViewportToWorldPoint(new Vector3(
-            _readingViewportPoint.x, _readingViewportPoint.y, _readingDistanceFromCamera));
-        MoveLens(reading, hideWhenArrived: false);
+        Vector3 toCamera = (_tableCamera.transform.position - _shoeCard.position).normalized;
+        Vector3 direction = (_shoeCard.up * _focusNormalWeight + toCamera).normalized;
+        Vector3 position = _shoeCard.position + direction * _focusDistance;
+        _tableCamera.Focus(position, Quaternion.LookRotation(_shoeCard.position - position, Vector3.up));
+    }
+
+    // 다가가는 시간과 들여다보는 시간이 지나면 돌아오도록 시간을 잰다
+    private void StartReturnTimer()
+    {
+        _returnTimer = _moveDuration + _holdSeconds;
+        enabled = true;
+    }
+
+    // 돋보기가 아직 슈 위로 가는 중이 아니면 렌즈 가운데가 맨 위 카드 바로 위에 오도록 카드와 나란히 띄우러 보낸다
+    private void HoverOverShoe()
+    {
+        if (_lens.gameObject.activeSelf && !_hideWhenArrived && _toScale == Vector3.one * _lensScale) return;
+        Vector3 position = _shoeCard.position + _shoeCard.up * _hoverHeight - _shoeCard.forward * (_lensCenterOffset * _lensScale);
+        MoveLens(position, _shoeCard.rotation, Vector3.one * _lensScale, hideWhenArrived: false);
     }
 
     // 덱에서 카드가 나가면 본 카드가 더 이상 맨 위가 아니므로 치운다
@@ -97,48 +123,53 @@ public class MagnifierView : MonoBehaviour
         if (_gm.CurrentPhase != GamePhase.Draw) Hide();
     }
 
-    // 덱에서 카메라 쪽으로 정한 거리만큼 떨어진 시선 위의 점을 구한다
-    private Vector3 PointOnSightLine(float distanceFromDeck)
-    {
-        Vector3 toCamera = (_camera.transform.position - _deckTop.position).normalized;
-        return _deckTop.position + toCamera * distanceFromDeck;
-    }
-
-    // 렌즈 면이 카메라를 향하고 렌즈 안 카드의 윗변이 화면 위쪽을 향하는 방향을 구한다
-    private Quaternion FacingCamera(Vector3 lensPosition)
-    {
-        Vector3 toCamera = (_camera.transform.position - lensPosition).normalized;
-        return Quaternion.LookRotation(_camera.transform.up, toCamera);
-    }
-
-    // 렌즈를 쉬는 자리로 돌려보내고 도착하면 숨긴다
+    // 앞면 카드를 끄고 시선을 풀고 돋보기를 쉬는 자리로 돌려보낸 뒤 도착하면 숨긴다
     private void Hide()
     {
+        _returnTimer = 0f;
+        _peekCard.gameObject.SetActive(false);
+        if (_tableCamera != null) _tableCamera.Release();
         if (!_lens.gameObject.activeSelf || _hideWhenArrived) return;
-        MoveLens(_deckTop.position + _restOffset, hideWhenArrived: true);
+        MoveLens(_shoeCard.position + _restOffset, _shoeCard.rotation, Vector3.one, hideWhenArrived: true);
     }
 
-    // 렌즈 이동을 시작하고 숨어 있었다면 쉬는 자리에서 나타나게 한다
-    private void MoveLens(Vector3 target, bool hideWhenArrived)
+    // 돋보기 이동을 시작하고 숨어 있었다면 쉬는 자리에서 나타나게 한다
+    private void MoveLens(Vector3 position, Quaternion rotation, Vector3 scale, bool hideWhenArrived)
     {
         if (!_lens.gameObject.activeSelf)
         {
-            Vector3 rest = _deckTop.position + _restOffset;
-            _lens.SetPositionAndRotation(rest, FacingCamera(rest));
+            _lens.SetPositionAndRotation(_shoeCard.position + _restOffset, rotation);
+            _lens.localScale = Vector3.one;
             _lens.gameObject.SetActive(true);
         }
 
         _fromPosition = _lens.position;
         _fromRotation = _lens.rotation;
-        _toPosition = target;
-        _toRotation = FacingCamera(target);
+        _fromScale = _lens.localScale;
+        _toPosition = position;
+        _toRotation = rotation;
+        _toScale = scale;
         _elapsed = 0f;
+        _moving = true;
         _hideWhenArrived = hideWhenArrived;
         enabled = true;
     }
 
-    // 렌즈가 움직이는 동안에만 자세를 보간하고 다 치웠으면 렌즈와 카드를 숨긴다
+    // 돌아올 시간을 재고, 돋보기가 움직이는 동안 자세를 보간하며, 할 일이 없으면 Update를 끈다
     private void Update()
+    {
+        if (_returnTimer > 0f)
+        {
+            _returnTimer -= Time.deltaTime;
+            if (_returnTimer <= 0f) Hide();
+        }
+
+        if (_moving) StepLens();
+        if (!_moving && _returnTimer <= 0f) enabled = false;
+    }
+
+    // 돋보기 자세를 한 프레임 보간하고 다 치웠으면 숨긴다
+    private void StepLens()
     {
         _elapsed += Time.deltaTime;
         float t = Mathf.Clamp01(_elapsed / _moveDuration);
@@ -146,12 +177,12 @@ public class MagnifierView : MonoBehaviour
         _lens.SetPositionAndRotation(
             Vector3.LerpUnclamped(_fromPosition, _toPosition, eased),
             Quaternion.Slerp(_fromRotation, _toRotation, eased));
+        _lens.localScale = Vector3.LerpUnclamped(_fromScale, _toScale, eased);
         if (t < 1f) return;
 
-        enabled = false;
+        _moving = false;
         if (!_hideWhenArrived) return;
 
-        _peekCard.gameObject.SetActive(false);
         _lens.gameObject.SetActive(false);
         _hideWhenArrived = false;
     }

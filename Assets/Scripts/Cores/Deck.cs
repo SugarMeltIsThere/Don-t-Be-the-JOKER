@@ -63,6 +63,12 @@ public class Deck
     public void DebugPushTop(Card card) => _cards.Add(card);
 #endif
 
+    // 카드를 맨 위를 뺀 덱 안의 아무 자리에 끼워 넣는다
+    public void InsertRandomBelowTop(Card card)
+    {
+        _cards.Insert(_random.Next(_cards.Count), card);
+    }
+
     public void InsertJoker()
     {
         int index = _random.Next(_cards.Count);

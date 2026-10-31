@@ -831,7 +831,7 @@ public class GameManager : MonoBehaviour
         return next;
     }
 
-    // 자신의 마지막 카드를 새 카드로 교체한다
+    // 자신의 마지막 카드를 새 카드로 교체하고 내준 카드는 덱 중간 아무 자리에 섞는다
     private bool HostUseBribe(ActivePlayer player)
     {
         if (!CanUse(player, ItemType.Bribe, GamePhase.Draw)) return false;
@@ -842,7 +842,9 @@ public class GameManager : MonoBehaviour
         Card newCard = _deck.Draw();
         if (newCard == null) return false;
 
+        Card traded = hand.Cards[hand.Cards.Count - 1].Card;
         hand.ReplaceLastCard(newCard);
+        _deck.InsertRandomBelowTop(traded);
         RemoveItem(player, ItemType.Bribe);
         HostNet?.SendReplaceLast(player, newCard);
 
