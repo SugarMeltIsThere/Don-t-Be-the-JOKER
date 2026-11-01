@@ -13,7 +13,10 @@ public class ChipTableView : MonoBehaviour
     private const int PileCount = 5;
     private const int MaxInstancesPerDenomination = 256;
 
-    private static readonly int[] Denominations = { 10, 5, 1 };
+    private const int StackSize = 10;
+    private const int StacksPerRow = 4;
+
+    private static readonly int[] Denominations = { 1 };
 
     [SerializeField] private Mesh _chipMesh;
     [SerializeField] private Material[] _chipMaterials = new Material[3];
@@ -39,6 +42,8 @@ public class ChipTableView : MonoBehaviour
     private Vector3 _chipScale;
     private GameManager _gm;
     private bool _initialized;
+    private int _preview;
+    private bool _clearPreviewOnState;
 
     private struct Flight
     {
@@ -93,6 +98,11 @@ public class ChipTableView : MonoBehaviour
     {
         if (_gm == null || _gm.GetPlayer1Cards() == null) return;
 
+        if (_clearPreviewOnState)
+        {
+            _preview = 0;
+            _clearPreviewOnState = false;
+        }
         ReadTargets();
         UpdateLabels();
 
@@ -115,7 +125,33 @@ public class ChipTableView : MonoBehaviour
         _target[MyBet] = hostSide ? _gm.Player1TotalBet : _gm.Player2TotalBet;
         _target[OpponentBet] = hostSide ? _gm.Player2TotalBet : _gm.Player1TotalBet;
         _target[Pot] = Mathf.Max(0, _gm.Pot - _gm.Player1TotalBet - _gm.Player2TotalBet);
+
+        int preview = Mathf.Min(_preview, _target[MyStack]);
+        _target[MyStack] -= preview;
+        _target[MyBet] += preview;
     }
+
+    // 확정 전 베팅 금액만큼 내 칩을 베팅 자리로 미리 옮겨 보인다(0이면 되돌린다)
+    public void SetPreview(int amount)
+    {
+        _preview = Mathf.Max(0, amount);
+        if (!_initialized || _gm == null) return;
+        ReadTargets();
+        UpdateLabels();
+        ScheduleTransfers();
+    }
+
+    // 다음 상태 변경이 오면 미리 보기를 실제 값으로 갈아끼우도록 표시한다
+    public void CommitPreview() => _clearPreviewOnState = true;
+
+    // 내 칩 더미 기준점 위치를 구한다
+    public Vector3 MyStackBase => _pileAnchors[MyStack].position;
+
+    // 내 베팅 더미 기준점 위치를 구한다
+    public Vector3 MyBetBase => _pileAnchors[MyBet].position;
+
+    // 액면가 순번의 칩 값을 돌려준다
+    public static int DenominationValue(int denominationIndex) => Denominations[denominationIndex];
 
     // 숫자가 바뀐 더미의 글자만 고친다
     private void UpdateLabels()
@@ -246,9 +282,15 @@ public class ChipTableView : MonoBehaviour
         return remaining / Denominations[denominationIndex];
     }
 
-    // 더미의 액면가 기둥에서 k번째 칩의 중심 위치를 구한다
-    private Vector3 ColumnPoint(Transform anchor, int denominationIndex, int k) =>
-        anchor.TransformPoint(new Vector3((denominationIndex - 1) * _columnSpacing, _chipHeight * (k + 0.5f), 0f));
+    // 더미에서 k번째 칩의 중심 위치를 구한다(10개씩 한 기둥, 기둥은 가로 4개씩 줄을 지어 플레이어 쪽으로 늘어난다)
+    private Vector3 ColumnPoint(Transform anchor, int denominationIndex, int k)
+    {
+        int stack = k / StackSize;
+        int level = k % StackSize;
+        float x = (stack % StacksPerRow - (StacksPerRow - 1) * 0.5f) * _columnSpacing;
+        float z = -(stack / StacksPerRow) * _columnSpacing;
+        return anchor.TransformPoint(new Vector3(x, _chipHeight * (level + 0.5f), z));
+    }
 
     // 그 금액이 쌓였을 때 액면가 기둥 맨 위에 놓일 칩의 위치를 구한다
     private Vector3 StackTop(int pile, int denominationIndex, int amount) =>

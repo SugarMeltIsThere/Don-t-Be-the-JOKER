@@ -77,7 +77,7 @@ public class MagnifierView : MonoBehaviour
     private void OnItemUsed(ActivePlayer seat, ItemType type)
     {
         if (type != ItemType.Magnifier) return;
-        HoverOverShoe();
+        if (!_peekCard.gameObject.activeSelf && Camera.main != null) HoverOverShoe(Camera.main.transform.position);
         StartReturnTimer();
     }
 
@@ -86,14 +86,18 @@ public class MagnifierView : MonoBehaviour
     {
         _peekCard.SetCard(card, faceUp: true);
         _peekCard.gameObject.SetActive(true);
-        HoverOverShoe();
         StartReturnTimer();
-        if (_tableCamera == null) return;
+        if (_tableCamera == null)
+        {
+            if (Camera.main != null) HoverOverShoe(Camera.main.transform.position);
+            return;
+        }
 
         Vector3 toCamera = (_tableCamera.transform.position - _shoeCard.position).normalized;
         Vector3 direction = (_shoeCard.up * _focusNormalWeight + toCamera).normalized;
-        Vector3 position = _shoeCard.position + direction * _focusDistance;
-        _tableCamera.Focus(position, Quaternion.LookRotation(_shoeCard.position - position, Vector3.up));
+        Vector3 eye = _shoeCard.position + direction * _focusDistance;
+        _tableCamera.Focus(eye, Quaternion.LookRotation(_shoeCard.position - eye, Vector3.up));
+        HoverOverShoe(eye);
     }
 
     // 다가가는 시간과 들여다보는 시간이 지나면 돌아오도록 시간을 잰다
@@ -103,12 +107,15 @@ public class MagnifierView : MonoBehaviour
         enabled = true;
     }
 
-    // 돋보기가 아직 슈 위로 가는 중이 아니면 렌즈 가운데가 맨 위 카드 바로 위에 오도록 카드와 나란히 띄우러 보낸다
-    private void HoverOverShoe()
+    // 눈과 맨 위 카드를 잇는 선 위, 카드에서 정한 거리만큼 떨어진 곳에 렌즈 가운데를 두고 렌즈 면이 눈을 향하게(손잡이는 화면 아래쪽) 보낸다
+    private void HoverOverShoe(Vector3 eye)
     {
-        if (_lens.gameObject.activeSelf && !_hideWhenArrived && _toScale == Vector3.one * _lensScale) return;
-        Vector3 position = _shoeCard.position + _shoeCard.up * _hoverHeight - _shoeCard.forward * (_lensCenterOffset * _lensScale);
-        MoveLens(position, _shoeCard.rotation, Vector3.one * _lensScale, hideWhenArrived: false);
+        Vector3 toEye = (eye - _shoeCard.position).normalized;
+        Vector3 forward = Vector3.ProjectOnPlane(Vector3.up, toEye);
+        if (forward.sqrMagnitude < 1e-4f) forward = _shoeCard.forward;
+        Quaternion rotation = Quaternion.LookRotation(forward.normalized, toEye);
+        Vector3 center = _shoeCard.position + toEye * _hoverHeight;
+        MoveLens(center - rotation * Vector3.forward * (_lensCenterOffset * _lensScale), rotation, Vector3.one * _lensScale, hideWhenArrived: false);
     }
 
     // 덱에서 카드가 나가면 본 카드가 더 이상 맨 위가 아니므로 치운다

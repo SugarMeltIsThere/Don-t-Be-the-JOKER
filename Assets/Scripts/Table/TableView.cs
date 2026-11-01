@@ -21,6 +21,11 @@ public class TableView : MonoBehaviour
     [SerializeField] private float _dealStagger = 0.12f;
     [SerializeField] private float _dealArc = 0.05f;
     [SerializeField] private float _flipDuration = 0.25f;
+    [SerializeField] private float _slideDuration = 0.45f;
+    [SerializeField] private float _slideLift = 0.004f;
+    [SerializeField] private float _landFlipArc = 0.036f;
+    [SerializeField] private float _replaceReturnDelay = 0.35f;
+    [SerializeField] private float _replaceDealDelay = 0.8f;
 
     private CardPool _pool;
     private readonly List<CardView> _myCards = new List<CardView>(10);
@@ -28,10 +33,15 @@ public class TableView : MonoBehaviour
     private CardView _sharedCard;
     private GameManager _gm;
     private float _nextDealDelay;
+    private float _pendingDealDelay;
+    private readonly List<CardView> _returning = new List<CardView>(4);
+    private readonly List<float> _returnTimes = new List<float>(4);
 
     private static readonly Quaternion FaceDownTurn = Quaternion.Euler(0f, 0f, 180f);
 
     private static ActivePlayer LocalSeat => PlayerActions.LocalSeat;
+
+    public IReadOnlyList<CardView> MyCards => _myCards;
 
     // 카드 풀을 미리 채운다
     private void Awake()
@@ -39,9 +49,10 @@ public class TableView : MonoBehaviour
         _pool = new CardPool(transform, _cardMaterial, _cardSpriteDatabase, PrewarmCards);
     }
 
-    // 게임 이벤트를 구독하고 지금 상태를 한 번 맞춘다
+    // 슈로 돌아가는 카드가 생길 때까지 Update를 끄고, 게임 이벤트를 구독하고 지금 상태를 한 번 맞춘다
     private void Start()
     {
+        enabled = false;
         _gm = GameManager.Instance;
         if (_gm == null) return;
 
@@ -69,6 +80,8 @@ public class TableView : MonoBehaviour
     // 새 라운드가 시작되면 테이블을 비운다
     private void OnRoundStarted(int round)
     {
+        ReleaseAll(_returning);
+        _returnTimes.Clear();
         ReleaseAll(_myCards);
         ReleaseAll(_opponentCards);
         if (_sharedCard != null)
@@ -82,17 +95,35 @@ public class TableView : MonoBehaviour
     // 카드가 나뉘면 테이블을 맞춘다
     private void OnCardDealt(ActivePlayer seat, int index) => Sync();
 
-    // 마지막 카드가 바뀌면 그 카드를 거두고 덱에서 새로 나눠준다
+    // 마지막 카드가 바뀌면 봉투가 닿을 즈음 그 카드를 엎어 슈로 돌려보내고, 조금 뒤 슈에서 새 카드를 나눠준다
     private void OnLastCardReplaced(ActivePlayer seat)
     {
         List<CardView> views = seat == LocalSeat ? _myCards : _opponentCards;
         if (views.Count > 0)
         {
             int last = views.Count - 1;
-            _pool.Release(views[last]);
+            CardView old = views[last];
             views.RemoveAt(last);
+            old.MoveTo(_deckTop.position, FaceRotation(_deckTop, faceUp: false), _dealDuration, _replaceReturnDelay, _dealArc);
+            _returning.Add(old);
+            _returnTimes.Add(Time.time + _replaceReturnDelay + _dealDuration);
+            enabled = true;
         }
+        _pendingDealDelay = _replaceDealDelay;
         Sync();
+    }
+
+    // 슈에 다 돌아간 카드를 풀로 돌려보낸다
+    private void Update()
+    {
+        for (int i = _returning.Count - 1; i >= 0; i--)
+        {
+            if (Time.time < _returnTimes[i]) continue;
+            _pool.Release(_returning[i]);
+            _returning.RemoveAt(i);
+            _returnTimes.RemoveAt(i);
+        }
+        if (_returning.Count == 0) enabled = false;
     }
 
     // 게임 상태와 테이블을 비교해 다른 부분만 연출과 함께 맞춘다
@@ -102,7 +133,8 @@ public class TableView : MonoBehaviour
 
         using (PerfMarkers.TableSync.Auto())
         {
-            _nextDealDelay = 0f;
+            _nextDealDelay = _pendingDealDelay;
+            _pendingDealDelay = 0f;
             ActivePlayer local = LocalSeat;
             ActivePlayer opponent = local == ActivePlayer.Player1 ? ActivePlayer.Player2 : ActivePlayer.Player1;
 
@@ -168,13 +200,15 @@ public class TableView : MonoBehaviour
         }
     }
 
-    // 풀에서 카드를 꺼내 덱 위에 엎어 두고 목표 자리로 날린다
+    // 풀에서 카드를 꺼내 덱 위에 엎어 두고 테이블 위로 엎은 채 미끄러뜨린 뒤, 앞면이어야 하면 도착한 자리에서 뒤집는다
     private CardView Deal(Card card, bool faceUp, Vector3 position, Quaternion rotation)
     {
         CardView view = _pool.Get();
         view.SetCard(card, faceUp);
         view.Snap(_deckTop.position, FaceRotation(_deckTop, faceUp: false));
-        view.MoveTo(position, rotation, _dealDuration, _nextDealDelay, _dealArc);
+        Quaternion slideRotation = faceUp ? rotation * FaceDownTurn : rotation;
+        view.MoveTo(position, slideRotation, _slideDuration, _nextDealDelay, _slideLift, slide: true);
+        if (faceUp) view.QueueFlip(rotation, _flipDuration, _landFlipArc);
         _nextDealDelay += _dealStagger;
         return view;
     }

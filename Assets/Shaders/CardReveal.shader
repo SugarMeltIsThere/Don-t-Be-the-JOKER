@@ -47,7 +47,9 @@ Shader "DBtJ/CardReveal"
 
             half4 frag(Varyings input) : SV_Target
             {
-                return SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv) * _BaseColor;
+                half4 color = SAMPLE_TEXTURE2D(_BaseMap, sampler_BaseMap, input.uv);
+                clip(color.a - 0.5h);
+                return color * _BaseColor;
             }
             ENDHLSL
         }

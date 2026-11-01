@@ -30,6 +30,7 @@ public class UIManager : MonoBehaviour
     [Header("P2 UI")]
     [SerializeField] private TextMeshProUGUI _p2ChipsText;
     [SerializeField] private TextMeshProUGUI _p2TotalText;
+    [SerializeField] private bool _useTableControls = true;
 
     [Header("Shared UI")]
     [SerializeField] private TextMeshProUGUI _potText;
@@ -389,7 +390,8 @@ public class UIManager : MonoBehaviour
 
             case GamePhase.AceSelection:
                 SetBettingButtonsVisible(false);
-                ShowAceSelectionPanel();
+                if (_useTableControls) HideAceSelectionPanel();
+                else ShowAceSelectionPanel();
                 break;
 
             case GamePhase.CardReveal:
@@ -398,7 +400,7 @@ public class UIManager : MonoBehaviour
                 break;
 
             case GamePhase.Betting:
-                SetBettingButtonsVisible(true);
+                SetBettingButtonsVisible(!_useTableControls);
                 HideAceSelectionPanel();
                 break;
             case GamePhase.ItemDiscard:

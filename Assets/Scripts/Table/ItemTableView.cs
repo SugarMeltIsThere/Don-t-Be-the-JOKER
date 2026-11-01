@@ -43,6 +43,17 @@ public class ItemTableView : MonoBehaviour
         _gm = null;
     }
 
+    // 그 좌석에서 그 종류 아이템이 놓인 슬롯의 기준점을 찾고, 이미 치워졌으면 가운데 슬롯을 돌려준다
+    public Transform AnchorOf(ActivePlayer seat, ItemType type)
+    {
+        bool mine = seat == PlayerActions.LocalSeat;
+        ItemInteractable[] views = mine ? _mine : _theirs;
+        Transform[] anchors = mine ? _mySlots : _opponentSlots;
+        for (int i = 0; i < MaxSlots; i++)
+            if (views[i] != null && views[i].Type == type) return anchors[i];
+        return anchors[MaxSlots / 2];
+    }
+
     // 한 종류의 아이템 오브젝트를 만들어 쌓아둔다
     private void Prewarm(ItemType type, ItemInteractable prefab)
     {

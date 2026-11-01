@@ -5,6 +5,8 @@ using UnityEngine.InputSystem;
 public class TableInput : MonoBehaviour
 {
     private const float MaxDistance = 5f;
+    private const float RepeatDelay = 0.35f;
+    private const float RepeatInterval = 0.07f;
     private const string InteractableLayer = "Interactable";
 
     [SerializeField] private Camera _camera;
@@ -13,6 +15,7 @@ public class TableInput : MonoBehaviour
     private Collider _hoveredCollider;
     private Interactable _hovered;
     private Interactable _highlighted;
+    private float _repeatAt;
 
     // 카메라와 레이어 마스크를 준비한다
     private void Awake()
@@ -21,7 +24,7 @@ public class TableInput : MonoBehaviour
         _mask = LayerMask.GetMask(InteractableLayer);
     }
 
-    // 커서 아래의 물건을 강조하고 클릭하면 행동을 요청한다
+    // 커서 아래의 물건을 강조하고 왼쪽 클릭이면 행동을, 오른쪽 클릭이면 보조 행동을 요청하며, 누르고 있으면 반복하는 물건은 잠시 뒤부터 계속 요청한다
     private void Update()
     {
         Mouse mouse = Mouse.current;
@@ -37,8 +40,23 @@ public class TableInput : MonoBehaviour
             _highlighted = usable;
         }
 
-        if (usable != null && mouse.leftButton.wasPressedThisFrame)
+        if (usable == null) return;
+        if (mouse.leftButton.wasPressedThisFrame)
+        {
             usable.Interact();
+            _repeatAt = Time.time + RepeatDelay;
+        }
+        else if (mouse.rightButton.wasPressedThisFrame)
+        {
+            usable.InteractAlt();
+            _repeatAt = Time.time + RepeatDelay;
+        }
+        else if (usable.RepeatsWhileHeld && Time.time >= _repeatAt && (mouse.leftButton.isPressed || mouse.rightButton.isPressed))
+        {
+            if (mouse.leftButton.isPressed) usable.Interact();
+            else usable.InteractAlt();
+            _repeatAt = Time.time + RepeatInterval;
+        }
     }
 
     // 커서에서 레이를 쏴 맞은 물건을 찾고 같은 콜라이더면 이전 결과를 다시 쓴다

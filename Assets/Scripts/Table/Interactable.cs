@@ -33,6 +33,11 @@ public abstract class Interactable : MonoBehaviour
     // 이 물건에 연결된 행동을 요청한다
     public abstract void Interact();
 
+    // 오른쪽 클릭에 연결된 보조 행동을 요청한다(기본은 아무것도 하지 않음)
+    public virtual void InteractAlt() { }
+
+    public virtual bool RepeatsWhileHeld => false;
+
     // 강조하는 동안에만 기본 색을 밝게 덮어쓰고 끄면 원래 머티리얼로 돌려놓는다
     public void SetHighlighted(bool highlighted)
     {

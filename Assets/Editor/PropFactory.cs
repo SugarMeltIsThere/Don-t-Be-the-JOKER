@@ -62,6 +62,12 @@ public static class PropFactory
             return new Color(0.8f, 0.62f, 0.3f) * h;
         }, false);
 
+        SaveTexture("CardEdges", 64, (u, v, x, y) =>
+        {
+            float line = y % 4 == 0 ? 0.78f : 1f;
+            return new Color(0.92f, 0.9f, 0.85f) * line * (0.97f + 0.06f * Fbm(u, v, 4, 16, 2, 301));
+        }, false);
+
         SaveTexture("Banknote", 256, (u, v, x, y) =>
         {
             bool border = u < 0.07f || u > 0.93f || v < 0.12f || v > 0.88f;
@@ -93,12 +99,14 @@ public static class PropFactory
         Lit("Wax", new Color(0.55f, 0.05f, 0.05f), null, null, 0f, 0f, 0.55f, 1f);
         Lit("Banknote", Color.white, "Banknote", null, 0f, 0f, 0.2f, 1f);
         Lit("PlasticBlack", new Color(0.025f, 0.025f, 0.03f), null, null, 0f, 0f, 0.8f, 1f);
+        Lit("CardEdges", Color.white, "CardEdges", null, 0f, 0f, 0.25f, 1f);
         Lit("CardStack", new Color(0.7f, 0.68f, 0.63f), null, null, 0f, 0f, 0.3f, 1f);
         Lit("Anodized", new Color(0.09f, 0.095f, 0.11f), null, null, 0f, 0.6f, 0.6f, 1f);
         Lit("Chrome", new Color(0.78f, 0.79f, 0.81f), null, null, 0f, 1f, 0.88f, 1f);
         Lit("Acrylic", new Color(0.04f, 0.04f, 0.055f, 0.85f), null, null, 0f, 0f, 0.7f, 1f).SetTransparent();
-        Lit("Glass", new Color(0.85f, 0.92f, 0.95f, 0.22f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
-        Lit("Liquid", new Color(0.62f, 0.28f, 0.05f, 0.8f), null, null, 0f, 0f, 0.9f, 1f).SetTransparent();
+        Lit("Glass", new Color(0.85f, 0.92f, 0.95f, 0.14f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
+        Lit("BottleGlass", new Color(0.2f, 0.12f, 0.05f, 0.55f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
+        Lit("Liquid", new Color(0.42f, 0.16f, 0.03f, 0.9f), null, null, 0f, 0f, 0.9f, 1f).SetTransparent();
         Lit("Bulb", new Color(1f, 0.85f, 0.6f), null, null, 0f, 0f, 0.5f, 1f).SetEmission(new Color(1f, 0.82f, 0.55f) * 3f);
         Lit("Lens", new Color(0.8f, 0.85f, 0.9f), null, null, 0f, 0f, 0.95f, 1f).SetEmission(new Color(1f, 0.95f, 0.8f) * 0.4f);
     }
@@ -112,7 +120,7 @@ public static class PropFactory
         SetVisual(VisualOf(table.Find("Bell")), SaveMesh(BuildBell()), Mats("Wood", "Brass"));
 
         Transform deck = table.Find("Deck");
-        SetVisual(VisualOf(deck), SaveMesh(BuildCardShoe()), Mats("PlasticBlack", "Acrylic", "CardStack"));
+        SetVisual(VisualOf(deck), SaveMesh(BuildCardShoe()), Mats("CardEdges"));
         FitCollider(deck);
         Transform shoeCard = PlaceShoeCard(deck);
         table.Find("DeckTop").SetPositionAndRotation(shoeCard.position, Quaternion.identity);
@@ -120,7 +128,7 @@ public static class PropFactory
 
         Transform props = table.Find("Props");
         SetVisual(VisualOf(props.Find("PendantLamp")), SaveMesh(BuildLamp()), Mats("Enamel", "EnamelInner", "Brass", "Bulb"));
-        SetVisual(VisualOf(props.Find("WhiskeySet")), SaveMesh(BuildWhiskey()), Mats("Glass", "Liquid", "Paper", "Wood"));
+        SetVisual(VisualOf(props.Find("WhiskeySet")), SaveMesh(BuildWhiskey()), Mats("Liquid", "BottleGlass", "Paper", "Wood", "Glass"));
         SetVisual(VisualOf(props.Find("Ashtray")), SaveMesh(BuildAshtray()), Mats("Brass", "Ash", "Cigar"));
 
         EditorSceneManager.MarkSceneDirty(table.gameObject.scene);
@@ -134,6 +142,70 @@ public static class PropFactory
         ReplaceItemVisual("MagnifierItem", SaveMesh(BuildMagnifier()), Mats("Brass", "Glass", "Wood"));
         ReplaceItemVisual("FlashItem", SaveMesh(BuildFlashlight()), Mats("Anodized", "Chrome", "Lens"));
         ReplaceItemVisual("BribeItem", SaveMesh(BuildEnvelope()), Mats("Paper", "Wax", "Banknote"));
+    }
+
+    private static readonly Vector2[] ChipProfile =
+    {
+        new Vector2(0f, -0.94f), new Vector2(0.36f, -0.94f), new Vector2(0.37f, -1f), new Vector2(0.47f, -1f),
+        new Vector2(0.5f, -0.7f), new Vector2(0.5f, 0.7f), new Vector2(0.47f, 1f), new Vector2(0.37f, 1f),
+        new Vector2(0.36f, 0.94f), new Vector2(0f, 0.94f)
+    };
+
+    // 칩 메시(유니티 원기둥과 같은 반지름 0.5, 높이 2 기준, 모서리 경사와 가운데 홈)와 액면가별 칩 텍스처를 만들어 칩 머티리얼에 붙인다
+    [MenuItem("Tools/DBtJ/Build Chips")]
+    public static void BuildChipAssets()
+    {
+        EnsureFolder(TextureFolder);
+        PropMeshBuilder b = new PropMeshBuilder();
+        b.Lathe(ChipProfile, 48, 0, 1f / Mathf.PI);
+        Mesh mesh = SaveMesh(b.ToMesh("Chip"));
+
+        float[] v = new float[ChipProfile.Length];
+        for (int i = 1; i < v.Length; i++) v[i] = v[i - 1] + Vector2.Distance(ChipProfile[i - 1], ChipProfile[i]) / Mathf.PI;
+
+        string[] names = { "Chip10", "Chip5", "Chip1" };
+        Color[] bases = { new Color(0.1f, 0.12f, 0.22f), new Color(0.6f, 0.08f, 0.07f), new Color(0.86f, 0.83f, 0.74f) };
+        Color[] accents = { new Color(0.9f, 0.88f, 0.82f), new Color(0.92f, 0.9f, 0.84f), new Color(0.12f, 0.3f, 0.5f) };
+        for (int d = 0; d < names.Length; d++)
+        {
+            Color baseColor = bases[d];
+            Color accent = accents[d];
+            SaveTexture(names[d] + "Face", 256, (u, vv, x, y) => ChipPixel(u, vv, v, baseColor, accent), false);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>($"Assets/Materials/{names[d]}.mat");
+            material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>($"{TextureFolder}/{names[d]}Face.png"));
+            material.SetColor("_BaseColor", Color.white);
+            material.SetTextureScale("_BaseMap", Vector2.one);
+            material.SetFloat("_Smoothness", 0.45f);
+            EditorUtility.SetDirty(material);
+        }
+
+        ChipTableView chips = Object.FindFirstObjectByType<ChipTableView>();
+        if (chips != null)
+        {
+            SerializedObject so = new SerializedObject(chips);
+            so.FindProperty("_chipMesh").objectReferenceValue = mesh;
+            so.ApplyModifiedPropertiesWithoutUndo();
+            EditorSceneManager.MarkSceneDirty(chips.gameObject.scene);
+            EditorSceneManager.SaveScene(chips.gameObject.scene);
+        }
+        AssetDatabase.SaveAssets();
+    }
+
+    // 칩 단면 위치(v)와 둘레 각도(u)로 옆면 흰 띠, 윗면 점선 고리, 가운데 밝은 원판 무늬를 고른다
+    private static Color ChipPixel(float u, float v, float[] marks, Color baseColor, Color accent)
+    {
+        float grain = 0.94f + 0.08f * Fbm(u, v, 32, 32, 2, 201);
+        Color c = baseColor;
+        if (v < marks[3]) c = baseColor;
+        else if (v < marks[6]) c = Mathf.Repeat(u * 6f, 1f) < 0.22f ? accent : baseColor;
+        else if (v < marks[7]) c = Mathf.Repeat(u * 16f, 1f) < 0.5f ? accent : baseColor;
+        else if (v < marks[8]) c = baseColor * 0.7f;
+        else
+        {
+            float r = (marks[9] - v) / (marks[9] - marks[8]);
+            c = r > 0.82f ? baseColor : Color.Lerp(accent, accent * 0.9f, Mathf.Repeat(r * 6f, 1f) < 0.5f ? 0f : 1f);
+        }
+        return c * grain;
     }
 
     // 펠트 윗면이 0.749에 오는 카드 테이블(나무 테두리, 앞치마, 돌린 다리)을 만든다
@@ -154,21 +226,27 @@ public static class PropFactory
         return b.ToMesh("Table");
     }
 
-    // 앞쪽(-x)이 비스듬한 현대식 카드 슈(검은 플라스틱 받침과 덮개, 연기색 아크릴 몸통, 안에 쌓인 카드)를 만든다
+    private const float DeckLayerHeight = 0.0024f;
+    private const int DeckLayers = 10;
+    private const float DeckTopYaw = 1.5f;
+
+    // 카드 수십 장을 쌓은 덱 더미(층마다 살짝 어긋난 직육면체, 옆면은 카드 단면 줄무늬)를 만든다
     private static Mesh BuildCardShoe()
     {
         PropMeshBuilder b = new PropMeshBuilder();
-        b.Cap(0.09f, 0.038f, 0.01f, 0f, false, 4, 0, 6f);
-        b.Sweep(0.09f, 0.038f, P(0.01f, 0f, 0.011f, 0.002f, 0.011f, 0.009f, 0.01f, 0.011f), 4, 0, 6f);
-        b.Cap(0.09f, 0.038f, 0.01f, 0.011f, true, 4, 0, 6f);
-        b.Prism(P(-0.094f, 0.011f, 0.098f, 0.011f, 0.098f, 0.09f, -0.016f, 0.09f, -0.094f, 0.031f), -0.044f, 0.044f, 1, 6f);
-        b.Prism(P(-0.07f, 0.012f, 0.094f, 0.012f, 0.094f, 0.082f, -0.002f, 0.082f, -0.07f, 0.031f), -0.0315f, 0.0315f, 2, 6f);
-        b.Box(new Vector3(0.041f, 0.0915f, 0f), new Vector3(0.116f, 0.003f, 0.092f), 0, 6f);
-        b.Box(new Vector3(-0.097f, 0.021f, 0f), new Vector3(0.006f, 0.02f, 0.092f), 0, 6f);
+        System.Random random = new System.Random(5);
+        for (int i = 0; i < DeckLayers; i++)
+        {
+            bool top = i == DeckLayers - 1;
+            float yaw = top ? DeckTopYaw : (float)(random.NextDouble() * 1.2 - 0.6);
+            Vector3 offset = top ? Vector3.zero : new Vector3((float)(random.NextDouble() - 0.5) * 0.0006f, 0f, (float)(random.NextDouble() - 0.5) * 0.0006f);
+            b.Transform = Matrix4x4.TRS(offset + Vector3.up * (DeckLayerHeight * (i + 0.5f)), Quaternion.Euler(0f, yaw, 0f), Vector3.one);
+            b.Box(Vector3.zero, new Vector3(0.062f, DeckLayerHeight, 0.083f), 0, 208f);
+        }
         return b.ToMesh("CardShoe");
     }
 
-    // 슈 비스듬한 면 위에 맨 위 카드가 놓일 기준점(카드 윗면이 비탈 바깥, 긴 변이 z)을 만들거나 옮긴다
+    // 덱 더미 맨 위 카드가 놓일 기준점(맨 위 층 바로 위, 긴 변이 z)을 만들거나 옮긴다
     private static Transform PlaceShoeCard(Transform deck)
     {
         Transform anchor = deck.Find("ShoeCard");
@@ -177,10 +255,8 @@ public static class PropFactory
             anchor = new GameObject("ShoeCard").transform;
             anchor.SetParent(deck, false);
         }
-        Vector2 mid = new Vector2(-0.055f, 0.0605f);
-        Vector2 normal = new Vector2(-0.6f, 0.8f);
-        anchor.localPosition = new Vector3(mid.x + normal.x * 0.0015f, mid.y + normal.y * 0.0015f, 0f);
-        anchor.localRotation = Quaternion.Euler(0f, 0f, 36.87f);
+        anchor.localPosition = new Vector3(0f, DeckLayerHeight * DeckLayers + 0.0003f, 0f);
+        anchor.localRotation = Quaternion.Euler(0f, DeckTopYaw, 0f);
         anchor.localScale = Vector3.one;
         return anchor;
     }
@@ -268,20 +344,20 @@ public static class PropFactory
         return b.ToMesh("PendantLamp");
     }
 
-    // 호박색 위스키가 든 유리병과 텀블러 두 잔을 만든다
+    // 호박색 위스키가 든 갈색 유리병과 투명 텀블러 두 잔을 만든다(투명한 것끼리 순서가 맞도록 술을 먼저 그린다)
     private static Mesh BuildWhiskey()
     {
         PropMeshBuilder b = new PropMeshBuilder();
-        b.Lathe(P(0f, 0f, 0.031f, 0f, 0.034f, 0.004f, 0.034f, 0.14f, 0.031f, 0.155f, 0.015f, 0.174f, 0.011f, 0.185f, 0.011f, 0.214f, 0.013f, 0.217f), 40, 0, 4f);
-        b.Lathe(P(0f, 0.004f, 0.0315f, 0.004f, 0.0315f, 0.095f, 0f, 0.095f), 40, 1, 4f);
+        b.Lathe(P(0f, 0.004f, 0.0315f, 0.004f, 0.0315f, 0.095f, 0f, 0.095f), 40, 0, 4f);
+        b.Lathe(P(0f, 0f, 0.031f, 0f, 0.034f, 0.004f, 0.034f, 0.14f, 0.031f, 0.155f, 0.015f, 0.174f, 0.011f, 0.185f, 0.011f, 0.214f, 0.013f, 0.217f), 40, 1, 4f);
         b.Lathe(P(0.0345f, 0.05f, 0.0345f, 0.112f), 40, 2, 6f);
         b.Lathe(P(0.0105f, 0.205f, 0.0105f, 0.232f, 0.009f, 0.236f, 0f, 0.237f), 24, 3, 6f);
 
         foreach (Vector3 at in new[] { new Vector3(0.075f, 0f, -0.025f), new Vector3(0.05f, 0f, 0.06f) })
         {
             b.Transform = Matrix4x4.Translate(at);
-            b.Lathe(P(0f, 0f, 0.029f, 0f, 0.031f, 0.003f, 0.034f, 0.085f, 0.0312f, 0.085f, 0.0285f, 0.013f, 0f, 0.013f), 40, 0, 4f);
-            b.Lathe(P(0f, 0.013f, 0.0283f, 0.013f, 0.0292f, 0.036f, 0f, 0.036f), 40, 1, 4f);
+            b.Lathe(P(0f, 0.013f, 0.0283f, 0.013f, 0.0292f, 0.036f, 0f, 0.036f), 40, 0, 4f);
+            b.Lathe(P(0f, 0f, 0.029f, 0f, 0.031f, 0.003f, 0.034f, 0.085f, 0.0312f, 0.085f, 0.0285f, 0.013f, 0f, 0.013f), 40, 4, 4f);
         }
         return b.ToMesh("WhiskeySet");
     }

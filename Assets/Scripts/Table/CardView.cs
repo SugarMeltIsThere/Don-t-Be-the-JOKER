@@ -19,6 +19,12 @@ public class CardView : MonoBehaviour
     private float _duration;
     private float _delay;
     private float _arc;
+    private bool _slide;
+    private Quaternion _toRotation;
+    private bool _hasFlip;
+    private Quaternion _flipRotation;
+    private float _flipDuration;
+    private float _flipArc;
 
     public Card Card { get; private set; }
     public bool FaceUp { get; private set; }
@@ -128,11 +134,12 @@ public class CardView : MonoBehaviour
         transform.SetPositionAndRotation(position, rotation);
         TargetPosition = position;
         TargetRotation = rotation;
+        _hasFlip = false;
         enabled = false;
     }
 
-    // 지금 위치에서 목표 자세로 움직이기 시작한다
-    public void MoveTo(Vector3 position, Quaternion rotation, float duration, float delay = 0f, float arc = 0f)
+    // 지금 위치에서 목표 자세로 움직이기 시작한다(미끄러지기면 처음에 빠르고 끝에서 천천히 멈춘다)
+    public void MoveTo(Vector3 position, Quaternion rotation, float duration, float delay = 0f, float arc = 0f, bool slide = false)
     {
         if (duration <= 0f)
         {
@@ -144,11 +151,24 @@ public class CardView : MonoBehaviour
         _fromRotation = transform.rotation;
         TargetPosition = position;
         TargetRotation = rotation;
+        _toRotation = rotation;
         _duration = duration;
         _delay = delay;
         _arc = arc;
+        _slide = slide;
+        _hasFlip = false;
         _elapsed = 0f;
         enabled = true;
+    }
+
+    // 지금 움직임이 끝나면 그 자리에서 살짝 들어 올려 뒤집도록 예약한다
+    public void QueueFlip(Quaternion rotation, float duration, float arc)
+    {
+        _hasFlip = true;
+        _flipRotation = rotation;
+        _flipDuration = duration;
+        _flipArc = arc;
+        TargetRotation = rotation;
     }
 
     // 이미 이 자세를 목표로 하고 있는지 확인한다
@@ -159,7 +179,7 @@ public class CardView : MonoBehaviour
     // 움직임을 멈춘다
     public void Stop() => enabled = false;
 
-    // 움직이는 동안에만 한 프레임씩 자세를 보간한다
+    // 움직이는 동안에만 한 프레임씩 자세를 보간하고, 예약된 뒤집기가 있으면 이어서 시작한다
     private void Update()
     {
         if (_delay > 0f)
@@ -170,12 +190,26 @@ public class CardView : MonoBehaviour
 
         _elapsed += Time.deltaTime;
         float t = Mathf.Clamp01(_elapsed / _duration);
-        float eased = t * t * (3f - 2f * t);
+        float eased = _slide ? 1f - (1f - t) * (1f - t) * (1f - t) : t * t * (3f - 2f * t);
 
         Vector3 position = Vector3.LerpUnclamped(_fromPosition, TargetPosition, eased);
         position.y += Mathf.Sin(t * Mathf.PI) * _arc;
-        transform.SetPositionAndRotation(position, Quaternion.Slerp(_fromRotation, TargetRotation, eased));
+        transform.SetPositionAndRotation(position, Quaternion.Slerp(_fromRotation, _toRotation, eased));
 
-        if (t >= 1f) enabled = false;
+        if (t < 1f) return;
+        if (!_hasFlip)
+        {
+            enabled = false;
+            return;
+        }
+
+        _hasFlip = false;
+        _fromPosition = transform.position;
+        _fromRotation = transform.rotation;
+        _toRotation = _flipRotation;
+        _duration = _flipDuration;
+        _arc = _flipArc;
+        _slide = false;
+        _elapsed = 0f;
     }
 }

@@ -1106,6 +1106,8 @@ public class GameManager : MonoBehaviour
     }
 
     // 좌석의 합계를 화면에 쓸 글자로 만든다
+    public bool IsAceEleven(ActivePlayer seat, int cardIndex) => S(seat).Hand != null && S(seat).Hand.IsAceEleven(cardIndex);
+
     public string GetTotalText(ActivePlayer seat)
     {
         PlayerHand hand = S(seat).Hand;

@@ -44,7 +44,7 @@ public static class RoomFactory
         Place(room, "Sideboard", BuildSideboard(), PropFactory.Mats("Wood", "Brass"), new Vector3(1.2f, 0f, Back - 0.25f), 0f, ShadowCastingMode.On);
         Place(room, "Bookshelf", BuildBookshelf(), PropFactory.Mats("Wood", "BookRed", "BookGreen", "BookBrown", "BookNavy"), new Vector3(-1.35f, 0f, Back - 0.18f), 0f, ShadowCastingMode.On);
         Place(room, "CoatRack", BuildCoatRack(), PropFactory.Mats("Wood", "Brass", "HatFelt"), new Vector3(-2.25f, 0f, 1.85f), 30f, ShadowCastingMode.On);
-        Place(room, "SideboardWhiskey", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/WhiskeySet.asset"), PropFactory.Mats("Glass", "Liquid", "Paper", "Wood"), new Vector3(1.45f, 0.885f, Back - 0.3f), 200f, ShadowCastingMode.On);
+        Place(room, "SideboardWhiskey", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/WhiskeySet.asset"), PropFactory.Mats("Liquid", "BottleGlass", "Paper", "Wood", "Glass"), new Vector3(1.45f, 0.885f, Back - 0.3f), 200f, ShadowCastingMode.On);
         Place(room, "SideboardAshtray", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/Ashtray.asset"), PropFactory.Mats("Brass", "Ash", "Cigar"), new Vector3(0.85f, 0.885f, Back - 0.3f), 60f, ShadowCastingMode.On);
 
         Mesh sconce = PropFactory.SaveMesh(BuildSconce());
@@ -499,13 +499,21 @@ public static class RoomFactory
         return light;
     }
 
-    // 톤매핑, 비네트, 블룸, 색 보정, 필름 그레인을 담은 전역 볼륨을 만들고 카메라 후처리를 켠다
+    // 톤매핑, 비네트, 블룸, 색 보정, 필름 그레인을 담은 전역 볼륨을 만들고(프로필은 다른 장면과 같이 쓰도록 에셋을 지우지 않고 내용만 다시 채운다) 카메라 후처리를 켠다
     private static void SetupPostProcessing(Transform room)
     {
         VolumeProfile profile = AssetDatabase.LoadAssetAtPath<VolumeProfile>(VolumePath);
-        if (profile != null) AssetDatabase.DeleteAsset(VolumePath);
-        profile = ScriptableObject.CreateInstance<VolumeProfile>();
-        AssetDatabase.CreateAsset(profile, VolumePath);
+        if (profile == null)
+        {
+            profile = ScriptableObject.CreateInstance<VolumeProfile>();
+            AssetDatabase.CreateAsset(profile, VolumePath);
+        }
+        foreach (VolumeComponent existing in profile.components.ToArray())
+        {
+            profile.components.Remove(existing);
+            AssetDatabase.RemoveObjectFromAsset(existing);
+            Object.DestroyImmediate(existing, true);
+        }
 
         Tonemapping tone = Add<Tonemapping>(profile);
         tone.mode.Override(TonemappingMode.ACES);
