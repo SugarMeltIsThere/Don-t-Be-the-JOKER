@@ -42,6 +42,8 @@ public class LobbyManager : MonoBehaviour
 
     [Header("Room List")]
     [SerializeField] private Transform _roomListContent;
+    private readonly List<SessionInfo> _rooms = new List<SessionInfo>();
+    private bool _hasRoomList;
     [SerializeField] private GameObject _roomItemPrefab;
 
     [Header("Error")]
@@ -231,7 +233,7 @@ public class LobbyManager : MonoBehaviour
         FinishEnterRoom(ok, "Room already exists.");
     }
 
-    // 입력한 방 코드로 참가한다
+    // 입력한 방 코드로 참가하되, 로비 방 목록에 없는 코드나 꽉 찬 방이면 접속을 시도하지 않고 안내만 한다
     private void OnJoinRoom()
     {
         string roomCode = _roomCodeInput.text.Trim().ToUpper();
@@ -239,6 +241,21 @@ public class LobbyManager : MonoBehaviour
         {
             if (TryGetNickname(out _)) ShowError("Please enter a room code.");
             return;
+        }
+
+        if (_hasRoomList)
+        {
+            SessionInfo room = _rooms.Find(r => r.Name == roomCode);
+            if (room == null)
+            {
+                if (TryGetNickname(out _)) ShowError("No table with that code.");
+                return;
+            }
+            if (!room.IsOpen || room.PlayerCount >= room.MaxPlayers)
+            {
+                if (TryGetNickname(out _)) ShowError("That table is full.");
+                return;
+            }
         }
         JoinRoom(roomCode);
     }
@@ -272,9 +289,13 @@ public class LobbyManager : MonoBehaviour
         _confirmCreateRoomButton.interactable = !busy;
     }
 
-    // 방 목록을 다시 그린다
+    // 방 목록을 기억하고 다시 그린다
     private void OnRoomListUpdated(List<SessionInfo> rooms)
     {
+        _rooms.Clear();
+        _rooms.AddRange(rooms);
+        _hasRoomList = true;
+
         foreach (Transform child in _roomListContent)
             Destroy(child.gameObject);
 

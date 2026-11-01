@@ -259,6 +259,7 @@ public class UIManager : MonoBehaviour
         bool myTurn = PlayerActions.IsLocalTurn;
         _phaseText.text = gm.CurrentPhase switch
         {
+            GamePhase.FirstTurnDetermination when gm.IsCutting => gm.CurrentPlayer == ActivePlayer.None ? "HIGH CARD LEADS" : myTurn ? "YOU LEAD" : "OPPONENT LEADS",
             GamePhase.Draw => myTurn ? "YOUR TURN · DRAW" : "OPPONENT'S TURN",
             GamePhase.AceSelection => gm.IsAceConfirmed(PlayerActions.LocalSeat) ? "WAITING FOR OPPONENT" : "SELECT ACES",
             GamePhase.Betting => myTurn ? "BETTING · YOUR TURN" : "BETTING · OPPONENT'S TURN",
@@ -382,6 +383,7 @@ public class UIManager : MonoBehaviour
 
         switch (gm.CurrentPhase)
         {
+            case GamePhase.FirstTurnDetermination:
             case GamePhase.Draw:
                 SetBettingButtonsVisible(false);
                 HideAceSelectionPanel();

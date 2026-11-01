@@ -17,6 +17,8 @@ public class TableInput : MonoBehaviour
     private Interactable _highlighted;
     private float _repeatAt;
 
+    public Interactable Hovered => _highlighted;
+
     // 카메라와 레이어 마스크를 준비한다
     private void Awake()
     {

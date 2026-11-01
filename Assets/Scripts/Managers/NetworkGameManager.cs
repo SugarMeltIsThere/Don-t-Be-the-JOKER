@@ -63,7 +63,7 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
     // 게스트가 호스트에 준비 신호를 반복해서 보낸다
     public override void Render()
     {
-        if (Object.HasStateAuthority || Snapshot.Round > 0 || Time.unscaledTime < _nextReadyAt) return;
+        if (Object.HasStateAuthority || Snapshot.Round > 0 || Snapshot.CutP1 != 0 || Time.unscaledTime < _nextReadyAt) return;
 
         _nextReadyAt = Time.unscaledTime + ReadyRetryInterval;
         RPC_ClientReady();

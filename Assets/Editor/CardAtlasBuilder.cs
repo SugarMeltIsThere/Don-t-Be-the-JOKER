@@ -9,6 +9,8 @@ public static class CardAtlasBuilder
     private const int H = 340;
     private const int Cols = 13;
     private const int Rows = 5;
+    private const int AtlasWidth = 4096;
+    private const int AtlasHeight = 2048;
     private const int FontSize = 160;
     private const float CornerRadius = 14f;
     private const string AtlasPath = "Assets/Sprites/cards_real.png";
@@ -32,8 +34,8 @@ public static class CardAtlasBuilder
     public static void Build()
     {
         PrepareFont();
-        int width = W * Cols;
-        int height = H * Rows;
+        int width = AtlasWidth;
+        int height = AtlasHeight;
         Color32[] atlas = new Color32[width * height];
 
         CardSpriteDatabase db = AssetDatabase.LoadAssetAtPath<CardSpriteDatabase>(DatabasePath);
@@ -405,21 +407,23 @@ public static class CardAtlasBuilder
     private static void Blit(Color32[] atlas, int atlasWidth, int row, int col)
     {
         int ox = col * W;
-        int oy = (Rows - 1 - row) * H;
+        int oy = AtlasHeight - (row + 1) * H;
         for (int y = 0; y < H; y++)
             for (int x = 0; x < W; x++)
                 atlas[(oy + y) * atlasWidth + ox + x] = s_cell[y * W + x];
     }
 
-    // 아틀라스를 칸마다 스프라이트로 자르고 압축, 필터 설정을 맞춘다
+    // 아틀라스(2의 거듭제곱 크기라 압축과 밉맵이 함께 됨)를 칸마다 스프라이트로 자르고 압축, 밉맵, 이방성 필터를 맞춘다
     private static void ImportAsSprites(int faceCount)
     {
         TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(AtlasPath);
         importer.textureType = TextureImporterType.Sprite;
         importer.spriteImportMode = SpriteImportMode.Multiple;
         importer.alphaIsTransparency = true;
-        importer.mipmapEnabled = false;
-        importer.filterMode = FilterMode.Bilinear;
+        importer.mipmapEnabled = true;
+        importer.mipMapBias = -0.4f;
+        importer.anisoLevel = 8;
+        importer.filterMode = FilterMode.Trilinear;
         importer.wrapMode = TextureWrapMode.Clamp;
         TextureImporterPlatformSettings settings = importer.GetDefaultPlatformTextureSettings();
         settings.maxTextureSize = 4096;
@@ -434,7 +438,7 @@ public static class CardAtlasBuilder
             metas.Add(new SpriteMetaData
             {
                 name = CellName(row, col),
-                rect = new UnityEngine.Rect(col * W, (Rows - 1 - row) * H, W, H),
+                rect = new UnityEngine.Rect(col * W, AtlasHeight - (row + 1) * H, W, H),
                 alignment = (int)SpriteAlignment.Center,
                 pivot = new Vector2(0.5f, 0.5f)
             });

@@ -166,7 +166,7 @@ public class TableControls : MonoBehaviour
     // 레이즈 패 글자, 고른 금액, 칩 기둥 안내, 미리 옮긴 칩을 지금 상태로 맞춘다
     private void RefreshRaiseVisuals(bool keepPreview)
     {
-        _raise.ShowAlt(IsRaising);
+        _raise.ShowAlt(IsRaising, _raiseSum <= 0);
         _raiseAmount.gameObject.SetActive(IsRaising);
         _raiseAmount.SetText("+{0}", _raiseSum);
         foreach (ChipColumnButton column in _chipColumns) column.SetHintVisible(IsRaising);
@@ -200,7 +200,7 @@ public class TableControls : MonoBehaviour
         }
     }
 
-    // 내 합계를 쓰되, 에이스를 고르는 중이면 아직 확정 전인 1/11 선택을 반영한 값으로 보여 준다
+    // 내 합계를 쓰되, 에이스를 고르는 중이면 확정 전 합계(에이스는 모두 1)에 11로 고른 에이스마다 10을 더해 보여 준다
     private void RefreshMyTotal()
     {
         string text = _gm.GetTotalText(PlayerActions.LocalSeat);
@@ -211,11 +211,7 @@ public class TableControls : MonoBehaviour
         }
 
         foreach (AceToggle toggle in _aceToggles)
-        {
-            bool known = _gm.IsAceEleven(PlayerActions.LocalSeat, toggle.CardIndex);
-            if (toggle.IsEleven && !known) total += 10;
-            else if (!toggle.IsEleven && known) total -= 10;
-        }
+            if (toggle.IsEleven) total += 10;
         _myTotal.SetText("{0}", total);
     }
 

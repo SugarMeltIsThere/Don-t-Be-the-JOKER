@@ -50,6 +50,8 @@ public class GameManager : MonoBehaviour
     private const int ItemStreakInterval = 2;
     private const int DefaultItemSlots = 2;
     private const float RoundEndRevealDuration = 2.5f;
+    private const float CutRevealDelay = 1.6f;
+    private const float CutHoldDuration = 2.6f;
 
     private static readonly ItemType[] RewardItems = { ItemType.Magnifier, ItemType.Flash, ItemType.Bribe };
 
@@ -94,6 +96,8 @@ public class GameManager : MonoBehaviour
     private ActivePlayer _bettingFirst;
     private ActivePlayer _diedPlayer = ActivePlayer.None;
     private ActivePlayer _lastLoser = ActivePlayer.None;
+    private ActivePlayer _cutWinner = ActivePlayer.None;
+    private readonly Card[] _cutCards = new Card[2];
     private Item _pendingItem;
     private ActivePlayer _pendingItemPlayer = ActivePlayer.None;
     private System.Random _random = new System.Random();
@@ -134,6 +138,7 @@ public class GameManager : MonoBehaviour
     public Item PendingItem => _pendingItem;
     public ActivePlayer PendingItemPlayer => _pendingItemPlayer;
     public Card PeekedCard { get; private set; }
+    public bool IsCutting => CurrentPhase == GamePhase.FirstTurnDetermination && _cutCards[0] != null;
 
     public int CallAmount => CurrentPlayer == ActivePlayer.None
         ? 0
@@ -219,7 +224,41 @@ public class GameManager : MonoBehaviour
         _deck = NewDeck();
         ApplyCharacterAbilities();
         CharactersChanged?.Invoke();
+        StartCoroutine(CutForLead());
+    }
+
+    // 두 사람에게 A~10 중 한 장씩 엎어 나눠 주고, 잠시 뒤 뒤집어 높은 쪽을 선공으로 정한 다음 첫 라운드를 시작한다
+    private IEnumerator CutForLead()
+    {
+        List<Card> cutDeck = new List<Card>(40);
+        for (Rank rank = Rank.Ace; rank <= Rank.Ten; rank++)
+            for (Suit suit = Suit.Clover; suit <= Suit.Spade; suit++)
+                cutDeck.Add(new Card(rank, suit));
+        Shuffle(cutDeck);
+
+        _cutCards[0] = cutDeck[0];
+        _cutCards[1] = cutDeck[1];
+        _cutWinner = Outranks(_cutCards[0], _cutCards[1]) ? ActivePlayer.Player1 : ActivePlayer.Player2;
+        CurrentPhase = GamePhase.FirstTurnDetermination;
+        CurrentPlayer = ActivePlayer.None;
+        Commit();
+
+        yield return new WaitForSeconds(CutRevealDelay);
+        CurrentPlayer = _cutWinner;
+        Debug.Log($"[선공결정] P1: {_cutCards[0]} / P2: {_cutCards[1]} → {_cutWinner}");
+        Commit();
+
+        yield return new WaitForSeconds(CutHoldDuration);
+        _cutCards[0] = _cutCards[1] = null;
         StartNewRound();
+    }
+
+    // 선공을 정하는 카드를 돌려준다(뒤집기 전에는 가려진 카드)
+    public Card GetCutCard(ActivePlayer seat)
+    {
+        Card card = _cutCards[(int)seat];
+        if (card == null) return null;
+        return CurrentPlayer == ActivePlayer.None ? HiddenCard : card;
     }
 
     // 좌석의 에이스 선택이 확정됐는지 확인한다
@@ -324,15 +363,7 @@ public class GameManager : MonoBehaviour
         }
         else
         {
-            List<Card> turnDeck = new List<Card>(10);
-            for (Rank rank = Rank.Ace; rank <= Rank.Ten; rank++)
-                turnDeck.Add(new Card(rank, Suit.Spade));
-            Shuffle(turnDeck);
-
-            Card p1Card = turnDeck[0];
-            Card p2Card = turnDeck[1];
-            CurrentPlayer = p1Card.Rank > p2Card.Rank ? ActivePlayer.Player1 : ActivePlayer.Player2;
-            Debug.Log($"[선공결정] P1: {p1Card} / P2: {p2Card} → {CurrentPlayer}");
+            CurrentPlayer = _cutWinner != ActivePlayer.None ? _cutWinner : ActivePlayer.Player1;
         }
 
         _bettingFirst = CurrentPlayer;
@@ -963,7 +994,9 @@ public class GameManager : MonoBehaviour
         P1Character = CharacterCode(_seats[0]),
         P2Character = CharacterCode(_seats[1]),
         PendingItemPlayer = (byte)_pendingItemPlayer,
-        PendingItem = _pendingItem == null ? GameSnapshot.None : (byte)_pendingItem.Type
+        PendingItem = _pendingItem == null ? GameSnapshot.None : (byte)_pendingItem.Type,
+        CutP1 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player1)),
+        CutP2 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player2))
     };
 
     // 좌석의 캐릭터를 번호로 바꾼다
@@ -973,8 +1006,10 @@ public class GameManager : MonoBehaviour
     // 받은 스냅샷을 게스트의 상태에 반영한다
     public void MirrorApply(in GameSnapshot s)
     {
-        if (s.Round == 0) return;
+        if (s.Round == 0 && s.CutP1 == 0) return;
 
+        _cutCards[0] = GameSnapshot.UnpackCard(s.CutP1);
+        _cutCards[1] = GameSnapshot.UnpackCard(s.CutP2);
         _round = s.Round;
         CurrentPhase = (GamePhase)s.Phase;
         CurrentPlayer = (ActivePlayer)s.Current;
@@ -1106,8 +1141,6 @@ public class GameManager : MonoBehaviour
     }
 
     // 좌석의 합계를 화면에 쓸 글자로 만든다
-    public bool IsAceEleven(ActivePlayer seat, int cardIndex) => S(seat).Hand != null && S(seat).Hand.IsAceEleven(cardIndex);
-
     public string GetTotalText(ActivePlayer seat)
     {
         PlayerHand hand = S(seat).Hand;

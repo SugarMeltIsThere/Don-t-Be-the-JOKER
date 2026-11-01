@@ -12,6 +12,7 @@ public class PropMeshBuilder
     private readonly List<List<int>> _submeshes = new List<List<int>>();
 
     public Matrix4x4 Transform = Matrix4x4.identity;
+    public bool Faceted;
 
     // 단면(반지름, 높이)을 y축 둘레로 돌려 회전체를 만든다
     public void Lathe(Vector2[] profile, int segments, int submesh, float uvScale)
@@ -19,7 +20,7 @@ public class PropMeshBuilder
         Sweep(0f, 0f, profile, segments / 4, submesh, uvScale);
     }
 
-    // 단면(바깥 간격, 높이)을 모서리가 둥근 사각형 경로를 따라 돌려 면을 만든다
+    // 단면(바깥 간격, 높이)을 모서리가 둥근 사각형 경로를 따라 돌려 면을 만든다(Faceted면 둘레 방향으로 각진 면)
     public void Sweep(float coreHalfX, float coreHalfZ, Vector2[] profile, int cornerSegments, int submesh, float uvScale)
     {
         List<Vector2> corners;
@@ -50,6 +51,22 @@ public class PropMeshBuilder
             Vector2 n1 = SmoothedNormal(segmentNormals, i, false);
             float length = Vector2.Distance(profile[i], profile[i + 1]);
             if (length < 1e-6f) continue;
+
+            if (Faceted)
+            {
+                for (int k = 0; k < corners.Count; k++)
+                {
+                    int next = (k + 1) % corners.Count;
+                    Vector2 mid = (directions[k] + directions[next]).normalized;
+                    int a = AddVertex(PathPoint(corners[k], directions[k], profile[i]), PathNormal(mid, n0), new Vector2(pathU[k], profileV) * uvScale);
+                    int b = AddVertex(PathPoint(corners[next], directions[next], profile[i]), PathNormal(mid, n0), new Vector2(pathU[k + 1], profileV) * uvScale);
+                    int c = AddVertex(PathPoint(corners[next], directions[next], profile[i + 1]), PathNormal(mid, n1), new Vector2(pathU[k + 1], profileV + length) * uvScale);
+                    int d = AddVertex(PathPoint(corners[k], directions[k], profile[i + 1]), PathNormal(mid, n1), new Vector2(pathU[k], profileV + length) * uvScale);
+                    Quad(submesh, a, b, c, d);
+                }
+                profileV += length;
+                continue;
+            }
 
             int start = _vertices.Count;
             for (int k = 0; k <= corners.Count; k++)

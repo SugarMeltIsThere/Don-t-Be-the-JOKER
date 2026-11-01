@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -17,6 +18,8 @@ public class TableView : MonoBehaviour
 
     [Header("Motion")]
     [SerializeField] private float _cardSpacing = 0.075f;
+    [SerializeField] private float _maxHandSpan = 0.22f;
+    [SerializeField] private float _overlapLift = 0.0006f;
     [SerializeField] private float _dealDuration = 0.35f;
     [SerializeField] private float _dealStagger = 0.12f;
     [SerializeField] private float _dealArc = 0.05f;
@@ -27,6 +30,12 @@ public class TableView : MonoBehaviour
     [SerializeField] private float _replaceReturnDelay = 0.35f;
     [SerializeField] private float _replaceDealDelay = 0.8f;
 
+    [Header("Cut For Lead")]
+    [SerializeField] private float _cutPull = 0.3f;
+    [SerializeField] private float _cutWinPull = 0.52f;
+    [SerializeField] private float _cutPushDelay = 0.55f;
+    [SerializeField] private float _cutPushDuration = 0.5f;
+
     private CardPool _pool;
     private readonly List<CardView> _myCards = new List<CardView>(10);
     private readonly List<CardView> _opponentCards = new List<CardView>(10);
@@ -36,6 +45,7 @@ public class TableView : MonoBehaviour
     private float _pendingDealDelay;
     private readonly List<CardView> _returning = new List<CardView>(4);
     private readonly List<float> _returnTimes = new List<float>(4);
+    private readonly CardView[] _cutCards = new CardView[2];
 
     private static readonly Quaternion FaceDownTurn = Quaternion.Euler(0f, 0f, 180f);
 
@@ -133,14 +143,73 @@ public class TableView : MonoBehaviour
 
         using (PerfMarkers.TableSync.Auto())
         {
-            _nextDealDelay = _pendingDealDelay;
-            _pendingDealDelay = 0f;
             ActivePlayer local = LocalSeat;
             ActivePlayer opponent = local == ActivePlayer.Player1 ? ActivePlayer.Player2 : ActivePlayer.Player1;
+            SyncCut(local, opponent);
 
+            _nextDealDelay = _pendingDealDelay;
+            _pendingDealDelay = 0f;
             SyncShared();
             SyncSide(_myCards, _mySide, Cards(local), isMine: true);
             SyncSide(_opponentCards, _opponentSide, Cards(opponent), isMine: false);
+        }
+    }
+
+    // 선공 정하기 중이면 두 사람 앞에 카드를 엎어 두고, 정해지면 뒤집은 뒤 이긴 쪽 카드를 가운데로 밀고, 끝나면 덱으로 돌려보낸다
+    private void SyncCut(ActivePlayer local, ActivePlayer opponent)
+    {
+        if (!_gm.IsCutting)
+        {
+            ReturnCut();
+            return;
+        }
+
+        _nextDealDelay = 0f;
+        bool decided = _gm.CurrentPlayer != ActivePlayer.None;
+        for (int i = 0; i < _cutCards.Length; i++)
+        {
+            ActivePlayer seat = i == 0 ? local : opponent;
+            Transform side = i == 0 ? _mySide : _opponentSide;
+            Vector3 position = Vector3.Lerp(side.position, _sharedSlot.position, _cutPull);
+            Quaternion rotation = FaceRotation(side, decided);
+            Card card = _gm.GetCutCard(seat);
+
+            CardView view = _cutCards[i];
+            if (view == null)
+            {
+                _cutCards[i] = Deal(card, decided, position, rotation);
+                continue;
+            }
+            if (view.FaceUp == decided) continue;
+
+            view.SetCard(card, decided);
+            view.MoveTo(position, rotation, _flipDuration, 0f, _landFlipArc);
+            if (_gm.CurrentPlayer == seat)
+                StartCoroutine(PushCut(view, Vector3.Lerp(side.position, _sharedSlot.position, _cutWinPull), rotation));
+        }
+    }
+
+    // 뒤집기가 끝난 이긴 쪽 카드를 가운데로 천천히 민다
+    private IEnumerator PushCut(CardView view, Vector3 position, Quaternion rotation)
+    {
+        yield return new WaitForSeconds(_cutPushDelay);
+        if (System.Array.IndexOf(_cutCards, view) >= 0)
+            view.MoveTo(position, rotation, _cutPushDuration, 0f, 0f, slide: true);
+    }
+
+    // 선공 카드를 엎어 덱으로 돌려보내고, 새 라운드 카드는 그 뒤에 나눠지게 한다
+    private void ReturnCut()
+    {
+        for (int i = 0; i < _cutCards.Length; i++)
+        {
+            CardView view = _cutCards[i];
+            if (view == null) continue;
+            _cutCards[i] = null;
+            view.MoveTo(_deckTop.position, FaceRotation(_deckTop, faceUp: false), _dealDuration, 0f, _dealArc);
+            _returning.Add(view);
+            _returnTimes.Add(Time.time + _dealDuration);
+            _pendingDealDelay = _dealDuration;
+            enabled = true;
         }
     }
 
@@ -221,9 +290,12 @@ public class TableView : MonoBehaviour
         views.Clear();
     }
 
-    // 손패 안에서 i번째 카드가 놓일 자리를 가운데 정렬로 구한다
-    private Vector3 SlotPosition(Transform side, int index, int count) =>
-        side.TransformPoint(new Vector3((index - (count - 1) * 0.5f) * _cardSpacing, 0f, 0f));
+    // 손패 안에서 i번째 카드가 놓일 자리를 가운데 정렬로 구한다(장수가 많으면 간격을 좁혀 겹치고, 뒤 카드를 살짝 높여 위에 올린다)
+    private Vector3 SlotPosition(Transform side, int index, int count)
+    {
+        float spacing = count > 1 ? Mathf.Min(_cardSpacing, _maxHandSpan / (count - 1)) : _cardSpacing;
+        return side.TransformPoint(new Vector3((index - (count - 1) * 0.5f) * spacing, index * _overlapLift, 0f));
+    }
 
     // 앞면이면 기준 방향 그대로, 뒷면이면 세로축으로 뒤집은 방향을 구한다
     private static Quaternion FaceRotation(Transform anchor, bool faceUp) =>

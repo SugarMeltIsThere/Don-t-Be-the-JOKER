@@ -93,10 +93,10 @@ public class ChipTableView : MonoBehaviour
         _gm = null;
     }
 
-    // 새 값을 읽어 처음이면 바로 쌓고 이후에는 줄어든 더미에서 늘어난 더미로 칩을 날린다
+    // 패가 나뉘었거나 선공을 정하는 중이면 새 값을 읽어 처음이면 바로 쌓고 이후에는 줄어든 더미에서 늘어난 더미로 칩을 날린다
     private void OnStateChanged()
     {
-        if (_gm == null || _gm.GetPlayer1Cards() == null) return;
+        if (_gm == null || (_gm.GetPlayer1Cards() == null && !_gm.IsCutting)) return;
 
         if (_clearPreviewOnState)
         {

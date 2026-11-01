@@ -110,11 +110,19 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public Task<bool> JoinRoomAsync(string roomCode) =>
         StartSessionAsync(GameMode.Client, roomCode, null);
 
-    // 세션을 시작하고 성공 여부를 반환한다
+    // 세션을 시작하고 성공 여부를 반환한다(로비에 있는 러너는 끊지 않고 그대로 방 접속에 쓴다)
     private async Task<bool> StartSessionAsync(GameMode mode, string roomCode, string roomTitle)
     {
-        await ShutdownRunnerAsync();
-        _runner = CreateRunner(Mode.Session);
+        if (_runner != null && _mode == Mode.Lobby && _runner.IsCloudReady)
+        {
+            _mode = Mode.Session;
+            _runner.gameObject.name = $"NetworkRunner ({Mode.Session})";
+        }
+        else
+        {
+            await ShutdownRunnerAsync();
+            _runner = CreateRunner(Mode.Session);
+        }
         _localRoomTitle = roomTitle ?? "";
         NetworkSceneManagerDefault sceneManager = _runner.gameObject.AddComponent<NetworkSceneManagerDefault>();
         int sceneIndex = SceneManager.GetActiveScene().buildIndex;

@@ -68,6 +68,8 @@ public static class PropFactory
             return new Color(0.92f, 0.9f, 0.85f) * line * (0.97f + 0.06f * Fbm(u, v, 4, 16, 2, 301));
         }, false);
 
+        BuildWhiskeyLabel();
+
         SaveTexture("Banknote", 256, (u, v, x, y) =>
         {
             bool border = u < 0.07f || u > 0.93f || v < 0.12f || v > 0.88f;
@@ -94,7 +96,7 @@ public static class PropFactory
         Lit("CardFace", new Color(0.92f, 0.9f, 0.85f), null, null, 0f, 0f, 0.4f, 1f);
         Lit("Enamel", new Color(0.07f, 0.28f, 0.17f), null, null, 0f, 0f, 0.65f, 1f);
         Lit("EnamelInner", new Color(0.9f, 0.87f, 0.78f), null, null, 0f, 0f, 0.4f, 1f);
-        Lit("Ash", new Color(0.36f, 0.35f, 0.33f), null, null, 0f, 0f, 0.1f, 1f);
+        Lit("Ash", new Color(0.2f, 0.195f, 0.19f), null, null, 0f, 0f, 0.1f, 1f);
         Lit("Cigar", new Color(0.3f, 0.17f, 0.09f), null, null, 0f, 0f, 0.25f, 1f);
         Lit("Wax", new Color(0.55f, 0.05f, 0.05f), null, null, 0f, 0f, 0.55f, 1f);
         Lit("Banknote", Color.white, "Banknote", null, 0f, 0f, 0.2f, 1f);
@@ -107,6 +109,10 @@ public static class PropFactory
         Lit("Glass", new Color(0.85f, 0.92f, 0.95f, 0.14f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
         Lit("BottleGlass", new Color(0.2f, 0.12f, 0.05f, 0.55f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
         Lit("Liquid", new Color(0.42f, 0.16f, 0.03f, 0.9f), null, null, 0f, 0f, 0.9f, 1f).SetTransparent();
+        Lit("Ice", new Color(0.85f, 0.92f, 1f, 0.35f), null, null, 0f, 0f, 0.95f, 1f).SetTransparent();
+        Lit("Foil", new Color(0.45f, 0.05f, 0.05f), null, null, 0f, 0.7f, 0.6f, 1f);
+        Material label = Lit("Label", Color.white, "WhiskeyLabel", null, 0f, 0f, 0.25f, 1f);
+        label.SetTextureScale("_BaseMap", new Vector2(1f, 1f / 0.32f));
         Lit("Bulb", new Color(1f, 0.85f, 0.6f), null, null, 0f, 0f, 0.5f, 1f).SetEmission(new Color(1f, 0.82f, 0.55f) * 3f);
         Lit("Lens", new Color(0.8f, 0.85f, 0.9f), null, null, 0f, 0f, 0.95f, 1f).SetEmission(new Color(1f, 0.95f, 0.8f) * 0.4f);
     }
@@ -117,7 +123,9 @@ public static class PropFactory
         if (s_materials == null) BuildMaterials();
         Transform table = GameObject.Find("Table").transform;
         SetVisual(table.Find("TableModel"), SaveMesh(BuildTable()), Mats("Wood", "Felt"));
-        SetVisual(VisualOf(table.Find("Bell")), SaveMesh(BuildBell()), Mats("Wood", "Brass"));
+        Mesh bell = SaveMesh(BuildBell());
+        SetVisual(VisualOf(table.Find("Bell")), bell, Mats("Wood", "Brass"));
+        if (table.Find("OpponentBell") != null) SetVisual(VisualOf(table.Find("OpponentBell")), bell, Mats("Wood", "Brass"));
 
         Transform deck = table.Find("Deck");
         SetVisual(VisualOf(deck), SaveMesh(BuildCardShoe()), Mats("CardEdges"));
@@ -128,7 +136,7 @@ public static class PropFactory
 
         Transform props = table.Find("Props");
         SetVisual(VisualOf(props.Find("PendantLamp")), SaveMesh(BuildLamp()), Mats("Enamel", "EnamelInner", "Brass", "Bulb"));
-        SetVisual(VisualOf(props.Find("WhiskeySet")), SaveMesh(BuildWhiskey()), Mats("Liquid", "BottleGlass", "Paper", "Wood", "Glass"));
+        SetVisual(VisualOf(props.Find("WhiskeySet")), SaveMesh(BuildWhiskey()), WhiskeyMats());
         SetVisual(VisualOf(props.Find("Ashtray")), SaveMesh(BuildAshtray()), Mats("Brass", "Ash", "Cigar"));
 
         EditorSceneManager.MarkSceneDirty(table.gameObject.scene);
@@ -344,35 +352,143 @@ public static class PropFactory
         return b.ToMesh("PendantLamp");
     }
 
-    // 호박색 위스키가 든 갈색 유리병과 투명 텀블러 두 잔을 만든다(투명한 것끼리 순서가 맞도록 술을 먼저 그린다)
+    // 위스키 세트 메시의 서브메시 순서에 맞는 머티리얼(투명한 것은 술, 얼음, 병, 잔 순서로 그린다)
+    internal static Material[] WhiskeyMats()
+    {
+        if (s_materials == null || !s_materials.ContainsKey("Label")) BuildMaterials();
+        return Mats("Liquid", "Ice", "BottleGlass", "Label", "Foil", "Glass");
+    }
+
+    // 두께 있는 갈색 버번 병(오목한 바닥, 라벨, 붉은 포일 마개)과 컷 크리스털 텀블러 두 잔(술과 얼음)을 만든다
     private static Mesh BuildWhiskey()
     {
         PropMeshBuilder b = new PropMeshBuilder();
-        b.Lathe(P(0f, 0.004f, 0.0315f, 0.004f, 0.0315f, 0.095f, 0f, 0.095f), 40, 0, 4f);
-        b.Lathe(P(0f, 0f, 0.031f, 0f, 0.034f, 0.004f, 0.034f, 0.14f, 0.031f, 0.155f, 0.015f, 0.174f, 0.011f, 0.185f, 0.011f, 0.214f, 0.013f, 0.217f), 40, 1, 4f);
-        b.Lathe(P(0.0345f, 0.05f, 0.0345f, 0.112f), 40, 2, 6f);
-        b.Lathe(P(0.0105f, 0.205f, 0.0105f, 0.232f, 0.009f, 0.236f, 0f, 0.237f), 24, 3, 6f);
+        b.Lathe(P(0f, 0.0072f, 0.0313f, 0.0072f, 0.0316f, 0.012f, 0.0316f, 0.104f, 0f, 0.104f), 64, 0, 4f);
+        b.Lathe(P(0f, 0.004f, 0.022f, 0.0015f, 0.03f, 0f, 0.0333f, 0.0025f, 0.034f, 0.01f, 0.034f, 0.133f, 0.0331f, 0.142f, 0.0302f, 0.151f, 0.0255f, 0.159f, 0.0195f, 0.1665f, 0.0145f, 0.174f, 0.0118f, 0.183f, 0.0115f, 0.192f, 0.0115f, 0.212f), 64, 2, 4f);
+        b.Lathe(P(0.0097f, 0.21f, 0.0097f, 0.192f, 0.0101f, 0.183f, 0.0127f, 0.174f, 0.0177f, 0.1665f, 0.0236f, 0.159f, 0.0283f, 0.151f, 0.0311f, 0.142f, 0.032f, 0.133f, 0.032f, 0.012f, 0.0305f, 0.0068f, 0f, 0.0068f), 64, 2, 4f);
+        b.Lathe(P(0.0346f, 0.042f, 0.0346f, 0.112f), 64, 3, 1f / (2f * Mathf.PI * 0.0346f));
+        b.Lathe(P(0.0118f, 0.188f, 0.0119f, 0.2f), 32, 4, 8f);
+        b.Lathe(P(0.0128f, 0.2f, 0.0131f, 0.205f, 0.0131f, 0.221f, 0.0115f, 0.2235f, 0f, 0.224f), 32, 4, 8f);
 
-        foreach (Vector3 at in new[] { new Vector3(0.075f, 0f, -0.025f), new Vector3(0.05f, 0f, 0.06f) })
+        System.Random random = new System.Random(4);
+        foreach (Vector3 at in new[] { new Vector3(0.078f, 0f, -0.028f), new Vector3(0.052f, 0f, 0.064f) })
         {
             b.Transform = Matrix4x4.Translate(at);
-            b.Lathe(P(0f, 0.013f, 0.0283f, 0.013f, 0.0292f, 0.036f, 0f, 0.036f), 40, 0, 4f);
-            b.Lathe(P(0f, 0f, 0.029f, 0f, 0.031f, 0.003f, 0.034f, 0.085f, 0.0312f, 0.085f, 0.0285f, 0.013f, 0f, 0.013f), 40, 4, 4f);
+            b.Lathe(P(0f, 0.0165f, 0.0293f, 0.0165f, 0.0302f, 0.042f, 0f, 0.042f), 48, 0, 4f);
+            b.Faceted = true;
+            b.Lathe(P(0f, 0f, 0.0305f, 0f, 0.0322f, 0.003f, 0.0348f, 0.086f, 0.0332f, 0.0885f, 0.0316f, 0.0885f), 16, 5, 4f);
+            b.Faceted = false;
+            b.Lathe(P(0.0316f, 0.0885f, 0.0298f, 0.03f, 0.0285f, 0.017f, 0f, 0.0165f), 48, 5, 4f);
+            for (int i = 0; i < 2; i++)
+            {
+                Vector3 offset = new Vector3((i == 0 ? -1f : 1f) * 0.009f, 0.036f + i * 0.006f, (float)(random.NextDouble() - 0.5) * 0.01f);
+                b.Transform = Matrix4x4.TRS(at + offset, Quaternion.Euler((float)random.NextDouble() * 40f, (float)random.NextDouble() * 90f, (float)random.NextDouble() * 30f), Vector3.one);
+                b.Cap(0.0065f, 0.0065f, 0.003f, -0.0095f, false, 3, 1, 20f);
+                b.Sweep(0.0065f, 0.0065f, P(0.003f, -0.0095f, 0.0095f, -0.0035f, 0.0095f, 0.0035f, 0.003f, 0.0095f), 3, 1, 20f);
+                b.Cap(0.0065f, 0.0065f, 0.003f, 0.0095f, true, 3, 1, 20f);
+            }
         }
         return b.ToMesh("WhiskeySet");
     }
 
-    // 오목한 황동 재떨이와 재, 가장자리에 걸친 시가를 만든다
+    // 기울인 시가가 오목한 재떨이 안에 누워 있고 재가 소복한 황동 재떨이를 만든다
     private static Mesh BuildAshtray()
     {
         PropMeshBuilder b = new PropMeshBuilder();
-        b.Lathe(P(0f, 0f, 0.067f, 0f, 0.07f, 0.004f, 0.07f, 0.024f, 0.066f, 0.03f, 0.058f, 0.03f, 0.054f, 0.026f, 0.049f, 0.012f, 0.044f, 0.008f, 0f, 0.008f), 48, 0, 6f);
-        b.Lathe(P(0.043f, 0.0095f, 0f, 0.0095f), 32, 1, 6f);
-        b.Transform = Matrix4x4.TRS(new Vector3(-0.035f, 0.022f, 0.012f), Quaternion.Euler(0f, 20f, -98f), Vector3.one);
-        b.Lathe(P(0f, 0f, 0.006f, 0f, 0.0085f, 0.004f, 0.0085f, 0.112f, 0.007f, 0.118f, 0f, 0.12f), 20, 2, 8f);
-        b.Lathe(P(0f, -0.012f, 0.0078f, -0.012f, 0.008f, 0.001f), 20, 1, 8f);
-        b.Lathe(P(0.0088f, 0.084f, 0.0088f, 0.098f), 20, 0, 8f);
+        b.Lathe(P(0f, 0f, 0.066f, 0f, 0.0695f, 0.003f, 0.0705f, 0.022f, 0.068f, 0.0285f, 0.0625f, 0.031f, 0.0575f, 0.0295f, 0.0535f, 0.0245f, 0.0485f, 0.012f, 0.043f, 0.0085f, 0f, 0.0085f), 64, 0, 6f);
+        b.Lathe(P(0.041f, 0.0092f, 0.03f, 0.0108f, 0.012f, 0.0112f, 0f, 0.0112f), 40, 1, 6f);
+        System.Random random = new System.Random(8);
+        for (int i = 0; i < 5; i++)
+        {
+            float angle = (float)random.NextDouble() * Mathf.PI * 2f;
+            float radius = 0.008f + (float)random.NextDouble() * 0.022f;
+            b.Transform = Matrix4x4.TRS(new Vector3(Mathf.Cos(angle) * radius, 0.0106f, Mathf.Sin(angle) * radius), Quaternion.identity, new Vector3(1f, 0.5f, 1f));
+            b.Lathe(P(0f, 0f, 0.0055f, 0f, 0.0042f, 0.003f, 0f, 0.0042f), 12, 1, 6f);
+        }
+        b.Transform = Matrix4x4.TRS(new Vector3(-0.038f, 0.0205f, 0.008f), Quaternion.Euler(0f, 18f, -84f), Vector3.one);
+        b.Lathe(P(0f, 0f, 0.0062f, 0f, 0.0084f, 0.003f, 0.0086f, 0.072f, 0.0078f, 0.079f, 0.004f, 0.0815f, 0f, 0.082f), 24, 2, 8f);
+        b.Lathe(P(0f, -0.011f, 0.0074f, -0.011f, 0.0082f, -0.004f, 0.0082f, 0.0005f), 24, 1, 8f);
+        b.Lathe(P(0.0088f, 0.058f, 0.0088f, 0.069f), 24, 0, 8f);
         return b.ToMesh("Ashtray");
+    }
+
+    // 버번 라벨 텍스처(낡은 크림 종이, 이중 테두리, OLD JOKER 글자, 작은 설명)를 운영체제 세리프 글꼴로 그려 저장한다
+    private static void BuildWhiskeyLabel()
+    {
+        const int w = 1024;
+        const int h = 256;
+        Font font = Font.CreateDynamicFontFromOSFont(new[] { "Times New Roman", "Georgia" }, 120);
+        font.RequestCharactersInTexture("OLDJKERBUNTSAYWHI0123456789 .", 120, FontStyle.Bold);
+        Texture source = font.material.mainTexture;
+        RenderTexture rt = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32);
+        Graphics.Blit(source, rt);
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture.active = rt;
+        Texture2D glyphs = new Texture2D(source.width, source.height, TextureFormat.RGBA32, false);
+        glyphs.ReadPixels(new UnityEngine.Rect(0, 0, source.width, source.height), 0, 0);
+        glyphs.Apply();
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(rt);
+
+        Color paper = new Color(0.84f, 0.77f, 0.6f);
+        Color ink = new Color(0.32f, 0.08f, 0.05f);
+        Color gold = new Color(0.62f, 0.46f, 0.18f);
+        Color[] pixels = new Color[w * h];
+        float x0 = w * 0.3f, x1 = w * 0.7f;
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                float u = (float)x / w, v = (float)y / h;
+                Color c = paper * (0.9f + 0.15f * Fbm(u, v, 16, 4, 3, 401));
+                bool inLabel = x > x0 && x < x1;
+                if (!inLabel) c = paper * 0.82f * (0.9f + 0.15f * Fbm(u, v, 16, 4, 3, 402));
+                float dx = Mathf.Min(Mathf.Abs(x - x0), Mathf.Abs(x - x1));
+                float dy = Mathf.Min(y, h - 1 - y);
+                if (inLabel && ((dx > 10 && dx < 13) || (dy > 10 && dy < 13))) c = gold;
+                if (inLabel && ((dx > 17 && dx < 19) || (dy > 17 && dy < 19))) c = ink;
+                pixels[y * w + x] = c;
+            }
+        StampText(pixels, w, h, font, glyphs, "OLD", w * 0.5f, h * 0.72f, 22f, gold);
+        StampText(pixels, w, h, font, glyphs, "JOKER", w * 0.5f, h * 0.36f, 70f, ink);
+        StampText(pixels, w, h, font, glyphs, "KENTUCKY BOURBON", w * 0.5f, h * 0.22f, 15f, ink);
+        StampText(pixels, w, h, font, glyphs, "AGED 12 YEARS", w * 0.5f, h * 0.11f, 13f, gold);
+        Object.DestroyImmediate(glyphs);
+
+        Texture2D texture = new Texture2D(w, h, TextureFormat.RGB24, false);
+        texture.SetPixels(pixels);
+        WritePngPublic(texture, "WhiskeyLabel");
+    }
+
+    // 글자열을 가운데 정렬로 픽셀 배열에 찍는다(높이는 대문자 높이)
+    private static void StampText(Color[] pixels, int w, int h, Font font, Texture2D glyphs, string text, float cx, float baseline, float capHeight, Color color)
+    {
+        font.GetCharacterInfo('O', out CharacterInfo reference, 120, FontStyle.Bold);
+        float scale = capHeight / Mathf.Max(1, reference.maxY);
+        float total = 0f;
+        foreach (char ch in text)
+        {
+            font.GetCharacterInfo(ch, out CharacterInfo info, 120, FontStyle.Bold);
+            total += (info.advance + 8f) * scale;
+        }
+        float pen = cx - total * 0.5f;
+        foreach (char ch in text)
+        {
+            font.GetCharacterInfo(ch, out CharacterInfo info, 120, FontStyle.Bold);
+            float gx0 = pen + info.minX * scale, gx1 = pen + info.maxX * scale;
+            float gy0 = baseline + info.minY * scale, gy1 = baseline + info.maxY * scale;
+            for (int y = Mathf.FloorToInt(gy0); y <= Mathf.CeilToInt(gy1); y++)
+                for (int x = Mathf.FloorToInt(gx0); x <= Mathf.CeilToInt(gx1); x++)
+                {
+                    if (x < 0 || y < 0 || x >= w || y >= h || gx1 <= gx0 || gy1 <= gy0) continue;
+                    float s = (x + 0.5f - gx0) / (gx1 - gx0);
+                    float t = (y + 0.5f - gy0) / (gy1 - gy0);
+                    if (s < 0f || s > 1f || t < 0f || t > 1f) continue;
+                    Vector2 uv = Vector2.Lerp(Vector2.Lerp(info.uvBottomLeft, info.uvBottomRight, s), Vector2.Lerp(info.uvTopLeft, info.uvTopRight, s), t);
+                    float a = glyphs.GetPixelBilinear(uv.x, uv.y).a;
+                    pixels[y * w + x] = Color.Lerp(pixels[y * w + x], color, a);
+                }
+            pen += (info.advance + 8f) * scale;
+        }
     }
 
     // 납작하게 놓인 돋보기(황동 테, 유리, 나무 손잡이가 플레이어 쪽)를 만든다
@@ -589,6 +705,9 @@ public static class PropFactory
             }
         WritePng(texture, name, true, false);
     }
+
+    // 텍스처를 반복 일반 텍스처로 저장한다
+    private static void WritePngPublic(Texture2D texture, string name) => WritePng(texture, name, false, false);
 
     // 텍스처를 PNG로 쓰고 들여오기 설정을 맞춘다
     private static void WritePng(Texture2D texture, string name, bool normal, bool clamp)

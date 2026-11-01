@@ -44,7 +44,7 @@ public static class RoomFactory
         Place(room, "Sideboard", BuildSideboard(), PropFactory.Mats("Wood", "Brass"), new Vector3(1.2f, 0f, Back - 0.25f), 0f, ShadowCastingMode.On);
         Place(room, "Bookshelf", BuildBookshelf(), PropFactory.Mats("Wood", "BookRed", "BookGreen", "BookBrown", "BookNavy"), new Vector3(-1.35f, 0f, Back - 0.18f), 0f, ShadowCastingMode.On);
         Place(room, "CoatRack", BuildCoatRack(), PropFactory.Mats("Wood", "Brass", "HatFelt"), new Vector3(-2.25f, 0f, 1.85f), 30f, ShadowCastingMode.On);
-        Place(room, "SideboardWhiskey", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/WhiskeySet.asset"), PropFactory.Mats("Liquid", "BottleGlass", "Paper", "Wood", "Glass"), new Vector3(1.45f, 0.885f, Back - 0.3f), 200f, ShadowCastingMode.On);
+        Place(room, "SideboardWhiskey", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/WhiskeySet.asset"), PropFactory.WhiskeyMats(), new Vector3(1.45f, 0.885f, Back - 0.3f), 200f, ShadowCastingMode.On);
         Place(room, "SideboardAshtray", AssetDatabase.LoadAssetAtPath<Mesh>("Assets/Models/Procedural/Ashtray.asset"), PropFactory.Mats("Brass", "Ash", "Cigar"), new Vector3(0.85f, 0.885f, Back - 0.3f), 60f, ShadowCastingMode.On);
 
         Mesh sconce = PropFactory.SaveMesh(BuildSconce());

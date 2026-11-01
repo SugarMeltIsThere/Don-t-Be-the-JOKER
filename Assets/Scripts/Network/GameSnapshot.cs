@@ -19,6 +19,13 @@ public struct GameSnapshot : INetworkStruct
     public byte P1Character, P2Character;
     public byte PendingItemPlayer;
     public byte PendingItem;
+    public byte CutP1, CutP2;
+
+    // 카드를 한 바이트로 압축한다(없으면 0)
+    public static byte PackCard(Card card) => card == null ? (byte)0 : (byte)((int)card.Rank * 4 + (int)card.Suit);
+
+    // 압축된 바이트를 카드로 푼다
+    public static Card UnpackCard(byte value) => value == 0 ? null : new Card((Rank)(value / 4), (Suit)(value % 4));
 
     // 아이템 목록을 한 바이트로 압축한다
     public static byte PackItems(IReadOnlyList<Item> items)

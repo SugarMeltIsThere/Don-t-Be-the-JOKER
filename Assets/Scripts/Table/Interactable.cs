@@ -6,6 +6,8 @@ public abstract class Interactable : MonoBehaviour
     private static MaterialPropertyBlock s_block;
 
     [SerializeField] private Color _highlightTint = new Color(1.7f, 1.55f, 1.15f);
+    [SerializeField] private string _prompt;
+    [SerializeField] private string _altPrompt;
 
     private Renderer[] _renderers;
     private Color[] _baseColors;
@@ -37,6 +39,10 @@ public abstract class Interactable : MonoBehaviour
     public virtual void InteractAlt() { }
 
     public virtual bool RepeatsWhileHeld => false;
+
+    public virtual string Prompt => _prompt;
+
+    public virtual string AltPrompt => _altPrompt;
 
     // 강조하는 동안에만 기본 색을 밝게 덮어쓰고 끄면 원래 머티리얼로 돌려놓는다
     public void SetHighlighted(bool highlighted)

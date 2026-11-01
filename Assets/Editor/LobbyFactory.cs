@@ -21,13 +21,17 @@ public static class LobbyFactory
         Transform table = new GameObject("Table").transform;
 
         Add(table, "TableModel", Mesh("Table"), PropFactory.Mats("Wood", "Felt"), Vector3.zero, 0f);
-        Add(Child(table, "Bell", new Vector3(-0.34f, Felt, -0.12f), 0f), "Visual", Mesh("Bell"), PropFactory.Mats("Wood", "Brass"), Vector3.zero, 0f);
+        Transform bell = Child(table, "Bell", new Vector3(-0.13f, Felt, -0.34f), 0f);
+        Transform opponentBell = Child(table, "OpponentBell", new Vector3(0.15f, Felt, 0.335f), 180f);
+        foreach (Transform t in new[] { bell, opponentBell })
+        {
+            t.localScale = Vector3.one * 0.7f;
+            Add(t, "Visual", Mesh("Bell"), PropFactory.Mats("Wood", "Brass"), Vector3.zero, 0f);
+        }
         Transform deck = Child(table, "Deck", new Vector3(0.34f, Felt, 0.02f), 0f);
         Add(deck, "Visual", Mesh("CardShoe"), PropFactory.Mats("CardEdges"), Vector3.zero, 0f);
         Transform props = Child(table, "Props", Vector3.zero, 0f);
         Add(Child(props, "PendantLamp", new Vector3(0f, 1.62f, 0.05f), 0f), "Visual", Mesh("PendantLamp"), PropFactory.Mats("Enamel", "EnamelInner", "Brass", "Bulb"), Vector3.zero, 0f);
-        Add(Child(props, "WhiskeySet", new Vector3(-0.44f, Felt, 0.33f), 150f), "Visual", Mesh("WhiskeySet"), PropFactory.Mats("Liquid", "BottleGlass", "Paper", "Wood", "Glass"), Vector3.zero, 0f);
-        Add(Child(props, "Ashtray", new Vector3(0.47f, Felt, 0.36f), 200f), "Visual", Mesh("Ashtray"), PropFactory.Mats("Brass", "Ash", "Cigar"), Vector3.zero, 0f);
 
         PlaceCards(table, deck);
         PlaceChips(table);
@@ -68,7 +72,7 @@ public static class LobbyFactory
             AssetDatabase.LoadAssetAtPath<Material>("Assets/Materials/Chip1.mat")
         };
         Transform chips = Child(table, "Chips", Vector3.zero, 0f);
-        Vector3[] piles = { new Vector3(0.22f, 0f, -0.27f), new Vector3(0.27f, 0f, -0.27f), new Vector3(0.245f, 0f, -0.225f), new Vector3(-0.2f, 0f, 0.34f), new Vector3(-0.15f, 0f, 0.34f), new Vector3(-0.14f, 0f, 0f), new Vector3(-0.1f, 0f, 0.02f) };
+        Vector3[] piles = { new Vector3(0.22f, 0f, -0.27f), new Vector3(0.27f, 0f, -0.27f), new Vector3(0.245f, 0f, -0.225f), new Vector3(-0.27f, 0f, 0.34f), new Vector3(-0.22f, 0f, 0.34f), new Vector3(-0.14f, 0f, 0f), new Vector3(-0.1f, 0f, 0.02f) };
         int[] counts = { 7, 5, 3, 6, 4, 4, 2 };
         int[] denom = { 0, 1, 2, 0, 2, 1, 0 };
         System.Random random = new System.Random(3);
