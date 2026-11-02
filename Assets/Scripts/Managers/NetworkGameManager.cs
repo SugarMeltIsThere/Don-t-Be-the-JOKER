@@ -8,7 +8,7 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
 
     private enum Command : byte
     {
-        Hit, Stand, AceValue, AceConfirm, Raise, Call, Die, UseItem, Discard, ReturnToWaitingRoom
+        Hit, Stand, AceValue, AceConfirm, Raise, Call, Die, UseItem, Discard, ReturnToWaitingRoom, Surrender
     }
 
     private const float ReadyRetryInterval = 0.5f;
@@ -27,9 +27,14 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
     public bool IsHost => NetworkManager.Instance != null && NetworkManager.Instance.IsHost;
     public ActivePlayer LocalPlayer => IsHost ? ActivePlayer.Player1 : ActivePlayer.Player2;
 
-    // 싱글턴을 등록한다
+    // 싱글턴을 등록한다(AI 연습 중이면 네트워크 없이 하도록 스스로 없어진다)
     private void Awake()
     {
+        if (PracticeMode.Active)
+        {
+            Destroy(gameObject);
+            return;
+        }
         if (Instance != null && Instance != this)
         {
             Destroy(gameObject);
@@ -138,6 +143,16 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
         if (_spawned) RPC_ItemUsed((byte)seat, (byte)type);
     }
 
+    // 게스트에 종소리를 알린다
+    public void SendBell(ActivePlayer seat)
+    {
+        if (_spawned) RPC_Bell((byte)seat);
+    }
+
+    // 게스트에서 종소리를 낸다
+    [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
+    private void RPC_Bell(byte seat) => GameManager.Instance.MirrorBell((ActivePlayer)seat);
+
     // 게스트에서 아이템 사용을 반영한다
     [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
     private void RPC_ItemUsed(byte seat, byte type) =>
@@ -195,6 +210,8 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
     public void RequestCall() => Send(Command.Call);
     // 다이를 요청한다
     public void RequestDie() => Send(Command.Die);
+    // 항복을 요청한다
+    public void RequestSurrender() => Send(Command.Surrender);
 
     // 돋보기 사용을 요청한다
     public void RequestUseMagnifier(ActivePlayer player) => Send(Command.UseItem, (int)ItemType.Magnifier);
@@ -252,7 +269,7 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
         switch (command)
         {
             case Command.Hit: if (myTurn) gm.OnHit(); break;
-            case Command.Stand: if (myTurn) gm.OnStand(); break;
+            case Command.Stand: if (myTurn) gm.OnStand(rang: true); break;
             case Command.Raise: if (myTurn) gm.OnRaise(a); break;
             case Command.Call: if (myTurn) gm.OnCall(); break;
             case Command.Die: if (myTurn) gm.OnDie(); break;
@@ -261,6 +278,7 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
             case Command.UseItem: gm.HostUseItem(seat, (ItemType)a); break;
             case Command.Discard: gm.HostDiscard(seat, a); break;
             case Command.ReturnToWaitingRoom: _guestWantsReturn = true; break;
+            case Command.Surrender: gm.OnSurrender(seat); break;
         }
     }
 

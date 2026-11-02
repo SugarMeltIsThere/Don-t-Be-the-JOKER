@@ -20,6 +20,7 @@ public struct GameSnapshot : INetworkStruct
     public byte PendingItemPlayer;
     public byte PendingItem;
     public byte CutP1, CutP2;
+    public byte Surrendered;
 
     // 카드를 한 바이트로 압축한다(없으면 0)
     public static byte PackCard(Card card) => card == null ? (byte)0 : (byte)((int)card.Rank * 4 + (int)card.Suit);
@@ -60,6 +61,7 @@ public interface IGameNet
     void SendReveal(Card hostLastCard, int hostAceMask);
     void SendOpponentAces(int mask);
     void SendItemUsed(ActivePlayer seat, ItemType type);
+    void SendBell(ActivePlayer seat);
 
     void RequestUseItem(ItemType type);
     void RequestDiscard(int discardIndex);

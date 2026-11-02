@@ -39,11 +39,11 @@ public class TurnTimer : MonoBehaviour
         if (_gm != null) _gm.StateChanged -= OnStateChanged;
     }
 
-    // 드로우나 베팅 차례가 바뀌거나 행동이 있을 때마다 제한 시간을 처음부터 다시 잰다
+    // 드로우나 베팅 차례가 바뀌거나 행동이 있을 때마다 제한 시간을 처음부터 다시 잰다(튜토리얼에서는 재지 않는다)
     private void OnStateChanged()
     {
         bool timed = (_gm.CurrentPhase == GamePhase.Draw || _gm.CurrentPhase == GamePhase.Betting)
-            && _gm.CurrentPlayer != ActivePlayer.None;
+            && _gm.CurrentPlayer != ActivePlayer.None && !PracticeMode.Tutorial;
         _running = timed;
         _root.SetActive(timed);
         if (!timed) return;

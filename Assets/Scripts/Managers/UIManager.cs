@@ -69,6 +69,9 @@ public class UIManager : MonoBehaviour
     [SerializeField] private Button _discardButton3;
     [SerializeField] private Button _discardNewButton;
 
+    [Header("Result")]
+    [SerializeField] private float _resultSeconds = 4.5f;
+
     [Header("Phase Guide")]
     [SerializeField] private TextMeshProUGUI _phaseText;
 
@@ -203,10 +206,17 @@ public class UIManager : MonoBehaviour
         _itemNoticeRoutine = null;
     }
 
-    // 게임이 끝나면 상대 이탈이 아닌 경우에만 결과를 처리한다
+    // 게임이 끝나면 상대 이탈이 아닌 경우에만 결과 화면을 잠시 보여 준 뒤 결과를 처리한다
     private void OnGameEnded(GameEndReason reason)
     {
         if (reason == GameEndReason.OpponentLeft) return;
+        StartCoroutine(HandleGameEndLater());
+    }
+
+    // 결과 화면을 볼 시간을 둔다
+    private System.Collections.IEnumerator HandleGameEndLater()
+    {
+        yield return new WaitForSeconds(_resultSeconds);
         HandleGameEnd();
     }
     // 칩과 팟과 베팅 표시를 갱신한다

@@ -1,0 +1,25 @@
+Don't Be The Joker - Sound credits
+
+All sound effects below are free for commercial use.
+
+------------------------------------------------------------
+Kenney (www.kenney.nl) - CC0 1.0 (public domain, credit optional)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+  Casino Audio 1.1      https://kenney.nl/assets/casino-audio
+    Cards/card-slide-1..8, Cards/card-place-1..4, Cards/card-shove-1..4,
+    Chips/chips-stack-1..6
+  RPG Audio             https://kenney.nl/assets/rpg-audio
+    Table/metalClick, Table/cloth2, Table/cloth3
+  Interface Sounds      https://kenney.nl/assets/interface-sounds
+    UI/tick_002, UI/click_002, UI/select_001
+
+------------------------------------------------------------
+Freesound - CC0 1.0 (public domain, credit optional)
+
+  Table/desk-bell       "Reception Bell" by FlashTrauma
+                        https://freesound.org/people/FlashTrauma/sounds/398281/
+                        (high-quality preview file of the original upload)
+
+------------------------------------------------------------
+Downloaded 2026-11-01. Licenses were checked on each source page at download time.

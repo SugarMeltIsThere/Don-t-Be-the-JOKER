@@ -15,6 +15,59 @@ public static class UiRedesign
     private static TMP_FontAsset s_serif;
     private static TMP_FontAsset s_sans;
 
+    private static readonly string[] TutorialSteps =
+    {
+        "Welcome to the table. Finish closer to 21 than your opponent, without going over. Let's play one guided round.",
+        "First, each of you gets a card. The higher card leads the first round. Watch.",
+        "The card in the middle is shared. It counts toward both totals. Your total is on your nameplate.",
+        "Your newest card is hidden from your opponent, and theirs from you. That's why their total shows a question mark.",
+        "It's your turn. Click the deck to draw a card.",
+        "An ace. It counts as 1 or 11. You choose after the drawing ends, so keep it in mind.",
+        "Now your opponent takes a turn. Turns alternate until both players stand.",
+        "With the ace as 11 you'd have 20. That's strong. Ring your bell to stand.",
+        "Drawing is over. Click your ace to switch it to 11, then press CONFIRM.",
+        "Betting. You each put in 1 chip. Press RAISE, click your chip stack to add chips, then press CONFIRM.",
+        "Your opponent calls. The hidden cards are revealed and the total closest to 21 takes the pot.",
+        "Lose two rounds in a row and you get an item. Here's a magnifier to try.",
+        "On your turn, click the magnifier to peek at the next card in the deck.",
+        "Use what you saw. Draw or stand, then finish this round on your own.",
+        "That's the whole flow. One last thing: draw the joker and you lose the round. Ready for a full match?"
+    };
+
+    private const string RulesLeft =
+        "<b>THE AIM</b>\n" +
+        "Get closer to 21 than your opponent. Go over and you bust.\n" +
+        "Both of you start with 40 chips. Run out and you lose the match.\n\n" +
+        "<b>A ROUND</b>\n" +
+        "A shared card in the middle counts for both players.\n" +
+        "Everyone gets one card. Your newest card stays hidden from your opponent.\n" +
+        "Take turns: click the deck to draw, or ring your bell to stand.\n\n" +
+        "<b>ACES</b>\n" +
+        "Before the reveal, click each ace in your hand to make it 1 or 11.\n\n" +
+        "<b>BETTING</b>\n" +
+        "Each player puts in 1 chip. Then CALL, RAISE or DIE.\n" +
+        "To raise, press RAISE, click your chips, then CONFIRM.\n" +
+        "Dying gives up the pot. Die while your opponent busted and you pay 5 more.";
+
+    private const string RulesRight =
+        "<b>WHO WINS</b>\n" +
+        "Not busting beats busting. Otherwise closest to 21 wins.\n" +
+        "On a tie, the highest card wins (spade, diamond, heart, clover).\n\n" +
+        "<b>THE JOKER</b>\n" +
+        "Draw the joker and you lose the round at once and pay 10 chips.\n\n" +
+        "<b>ITEMS</b>\n" +
+        "Lose two rounds in a row and you get an item.\n" +
+        "Magnifier: peek at the next card while drawing.\n" +
+        "Bribe: swap your newest card while drawing.\n" +
+        "Flash: steal 3 chips during betting.\n\n" +
+        "<b>CHARACTERS</b>\n" +
+        "King: 3 item slots.   Queen: 5 extra chips.\n" +
+        "Jack: 30% chance to keep a used item.\n" +
+        "Joker: hides a joker in the deck, but never gets items.\n\n" +
+        "<b>TURNS</b>\n" +
+        "A high card decides who leads the first round. After that the loser leads.\n" +
+        "Each turn has 20 seconds.";
+
     // 인게임 HUD를 미니멀하게 바꾼다: 단계 글자와 알림은 세리프에 얇은 선, 시간 고리는 가늘게, 커서 옆 클릭 안내와 바닥 한 줄 안내, 아이템 버리기 창은 어두운 막 위 글자 버튼
     [MenuItem("Tools/DBtJ/Redesign Game HUD")]
     public static void BuildGameHud()
@@ -643,6 +696,7 @@ public static class UiRedesign
         }
         underlineImage.transform.SetParent(main.transform, false);
         FitUnderline(button, main, true);
+        FitButtonWidth(button, main);
 
         Transform oldMarker = button.transform.Find("Marker");
         Image marker = oldMarker != null ? oldMarker.GetComponent<Image>() : NewImage(button.transform, "Marker");
@@ -660,6 +714,21 @@ public static class UiRedesign
         so.FindProperty("_label").objectReferenceValue = main.rectTransform;
         so.FindProperty("_marker").objectReferenceValue = marker;
         so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // 클릭 영역을 글자 폭(마우스를 올렸을 때 밀리는 거리 포함)에 맞춘다(꺼진 패널 안의 글자는 잠깐 켜서 잰다)
+    private static void FitButtonWidth(Button button, TMP_Text label)
+    {
+        label.enableAutoSizing = false;
+        RectTransform rect = (RectTransform)button.transform;
+        label.textWrappingMode = TextWrappingModes.NoWrap;
+        var hidden = new System.Collections.Generic.List<GameObject>();
+        for (Transform t = label.transform; t != null; t = t.parent)
+            if (!t.gameObject.activeSelf) hidden.Add(t.gameObject);
+        foreach (GameObject go in hidden) go.SetActive(true);
+        float width = label.GetPreferredValues(label.text, float.PositiveInfinity, float.PositiveInfinity).x;
+        foreach (GameObject go in hidden) go.SetActive(false);
+        rect.sizeDelta = new Vector2(width + 28f, rect.sizeDelta.y);
     }
 
     // 자식 전체에서 이름이 같은 이미지를 찾는다
@@ -950,5 +1019,437 @@ public static class UiRedesign
         importer.mipmapEnabled = false;
         importer.SaveAndReimport();
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
+    }
+
+    // 열린 장면에 설정 창(음량, 밝기, 화면 모드, 게임 장면이면 항복)과 여는 버튼을 새로 만들고, 게임 장면이면 결과 화면과 튜토리얼 안내를, 로비면 메뉴 버튼과 규칙 창을 함께 만든다
+    [MenuItem("Tools/DBtJ/Build Settings Menu")]
+    public static void BuildSettings()
+    {
+        LoadFonts();
+        Canvas root = null;
+        foreach (Canvas c in Object.FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            if (c.transform.parent == null) root = c;
+        Transform canvas = root.transform;
+        bool inGame = Object.FindFirstObjectByType<GameManager>(FindObjectsInactive.Include) != null;
+
+        Transform old = canvas.Find("SettingsMenu");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        RectTransform menuRoot = (RectTransform)new GameObject("SettingsMenu", typeof(RectTransform)).transform;
+        menuRoot.SetParent(canvas, false);
+        Stretch(menuRoot);
+        SettingsMenu menu = menuRoot.gameObject.AddComponent<SettingsMenu>();
+
+        Image scrim = NewImage(menuRoot, "Panel");
+        scrim.color = new Color(0.012f, 0.01f, 0.008f, 0.99f);
+        Stretch(scrim.rectTransform);
+        Transform panel = scrim.transform;
+
+        TMP_Text title = NewText(panel, "Title", "SETTINGS", s_serif, 52f, Gold, 10f);
+        title.rectTransform.anchoredPosition = new Vector2(0f, 230f);
+        title.rectTransform.sizeDelta = new Vector2(600f, 70f);
+        Hairline(panel, "TitleLine", new Vector2(0f, 186f), 80f);
+
+        Sprite knob = FrameSprite("UI_Knob", Color.white, new Color(0, 0, 0, 0), 32f);
+        (Slider volume, TMP_Text volumeValue) = SettingRow(panel, "Volume", "VOLUME", 90f, knob);
+        (Slider brightness, TMP_Text brightnessValue) = SettingRow(panel, "Brightness", "BRIGHTNESS", 10f, knob);
+
+        TMP_Text displayTitle = NewText(panel, "DisplayLabel", "DISPLAY", s_sans, 15f, Dim, 6f);
+        displayTitle.alignment = TextAlignmentOptions.MidlineLeft;
+        Left(displayTitle.rectTransform, -300f, -70f, 200f, 40f);
+        Button display = CenterButton(panel, "DisplayButton", "FULLSCREEN", -70f);
+        RectTransform displayRect = (RectTransform)display.transform;
+        displayRect.anchoredPosition = new Vector2(60f, -70f);
+        GameObject fullscreenLabel = display.GetComponentInChildren<TMP_Text>(true).gameObject;
+        GameObject windowedLabel = Object.Instantiate(fullscreenLabel, fullscreenLabel.transform.parent);
+        windowedLabel.name = "WindowedLabel";
+        windowedLabel.GetComponent<TMP_Text>().text = "WINDOWED";
+        windowedLabel.SetActive(false);
+
+        Button surrender = null;
+        GameObject surrenderLabel = null;
+        GameObject confirmLabel = null;
+        if (inGame)
+        {
+            surrender = CenterButton(panel, "SurrenderButton", "SURRENDER", -170f);
+            surrenderLabel = surrender.GetComponentInChildren<TMP_Text>(true).gameObject;
+            GameObject confirm = Object.Instantiate(surrenderLabel, surrenderLabel.transform.parent);
+            confirm.name = "ConfirmLabel";
+            TMP_Text confirmText = confirm.GetComponent<TMP_Text>();
+            confirmText.text = "CONFIRM SURRENDER";
+            confirmText.color = new Color(0.86f, 0.42f, 0.36f);
+            confirm.SetActive(false);
+            confirmLabel = confirm;
+        }
+        Button close = CenterButton(panel, "CloseButton", "CLOSE", inGame ? -250f : -170f);
+
+        Button open = inGame ? GameMenuButton(canvas) : LobbyMenuButtons(canvas);
+        if (inGame)
+        {
+            BuildResult(canvas);
+            BuildTutorial(canvas);
+        }
+        else BuildRules(canvas);
+
+        SerializedObject so = new SerializedObject(menu);
+        so.FindProperty("_panel").objectReferenceValue = panel.gameObject;
+        so.FindProperty("_volume").objectReferenceValue = volume;
+        so.FindProperty("_volumeValue").objectReferenceValue = volumeValue;
+        so.FindProperty("_brightness").objectReferenceValue = brightness;
+        so.FindProperty("_brightnessValue").objectReferenceValue = brightnessValue;
+        so.FindProperty("_close").objectReferenceValue = close;
+        so.FindProperty("_display").objectReferenceValue = display;
+        so.FindProperty("_fullscreenLabel").objectReferenceValue = fullscreenLabel;
+        so.FindProperty("_windowedLabel").objectReferenceValue = windowedLabel;
+        so.FindProperty("_open").objectReferenceValue = open;
+        so.FindProperty("_surrender").objectReferenceValue = surrender;
+        so.FindProperty("_surrenderLabel").objectReferenceValue = surrenderLabel;
+        so.FindProperty("_confirmSurrenderLabel").objectReferenceValue = confirmLabel;
+        so.ApplyModifiedPropertiesWithoutUndo();
+
+        menuRoot.SetAsLastSibling();
+        EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
+        EditorSceneManager.SaveScene(canvas.gameObject.scene);
+    }
+
+    // 왼쪽 이름, 가운데 가는 선 슬라이더(금색 채움과 둥근 손잡이), 오른쪽 숫자로 된 설정 한 줄을 만든다
+    private static (Slider, TMP_Text) SettingRow(Transform panel, string name, string label, float y, Sprite knob)
+    {
+        TMP_Text title = NewText(panel, name + "Label", label, s_sans, 15f, Dim, 6f);
+        title.alignment = TextAlignmentOptions.MidlineLeft;
+        Left(title.rectTransform, -300f, y, 200f, 40f);
+
+        GameObject sliderGo = DefaultControls.CreateSlider(new DefaultControls.Resources());
+        sliderGo.name = name + "Slider";
+        sliderGo.transform.SetParent(panel, false);
+        RectTransform rect = (RectTransform)sliderGo.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(60f, y);
+        rect.sizeDelta = new Vector2(340f, 24f);
+        Slider slider = sliderGo.GetComponent<Slider>();
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.value = 0.5f;
+        slider.transition = Selectable.Transition.None;
+
+        Image background = sliderGo.transform.Find("Background").GetComponent<Image>();
+        background.sprite = null;
+        background.color = new Color(Cream.r, Cream.g, Cream.b, 0.22f);
+        RectTransform bg = background.rectTransform;
+        bg.anchorMin = new Vector2(0f, 0.5f);
+        bg.anchorMax = new Vector2(1f, 0.5f);
+        bg.offsetMin = new Vector2(0f, -1f);
+        bg.offsetMax = new Vector2(0f, 1f);
+
+        RectTransform fillArea = (RectTransform)sliderGo.transform.Find("Fill Area");
+        fillArea.anchorMin = new Vector2(0f, 0.5f);
+        fillArea.anchorMax = new Vector2(1f, 0.5f);
+        fillArea.offsetMin = new Vector2(0f, -1f);
+        fillArea.offsetMax = new Vector2(0f, 1f);
+        Image fill = fillArea.Find("Fill").GetComponent<Image>();
+        fill.sprite = null;
+        fill.color = Gold;
+        fill.rectTransform.offsetMin = Vector2.zero;
+        fill.rectTransform.offsetMax = Vector2.zero;
+
+        RectTransform handleArea = (RectTransform)sliderGo.transform.Find("Handle Slide Area");
+        handleArea.offsetMin = Vector2.zero;
+        handleArea.offsetMax = Vector2.zero;
+        Image handle = handleArea.Find("Handle").GetComponent<Image>();
+        handle.sprite = knob;
+        handle.type = Image.Type.Simple;
+        handle.preserveAspect = true;
+        handle.color = Cream;
+        RectTransform h = handle.rectTransform;
+        h.anchorMin = new Vector2(h.anchorMin.x, 0.5f);
+        h.anchorMax = new Vector2(h.anchorMax.x, 0.5f);
+        h.sizeDelta = new Vector2(16f, 16f);
+        slider.targetGraphic = handle;
+
+        TMP_Text value = NewText(panel, name + "Value", "50", s_sans, 18f, Cream, 2f);
+        value.alignment = TextAlignmentOptions.MidlineRight;
+        RectTransform v = value.rectTransform;
+        v.anchorMin = v.anchorMax = new Vector2(0.5f, 0.5f);
+        v.pivot = new Vector2(1f, 0.5f);
+        v.anchoredPosition = new Vector2(310f, y);
+        v.sizeDelta = new Vector2(80f, 40f);
+        return (slider, value);
+    }
+
+    // 가운데 정렬 글자 버튼을 만든다
+    private static Button CenterButton(Transform panel, string name, string label, float y)
+    {
+        GameObject go = TMP_DefaultControls.CreateButton(new TMP_DefaultControls.Resources());
+        go.name = name;
+        go.transform.SetParent(panel, false);
+        go.GetComponentInChildren<TMP_Text>(true).text = label;
+        Button button = go.GetComponent<Button>();
+        TextButton(button);
+        RectTransform rect = (RectTransform)go.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = new Vector2(0f, y);
+        rect.sizeDelta = new Vector2(320f, 56f);
+        return button;
+    }
+
+    // 게임 화면 왼쪽 위에 설정 창을 여는 작은 글자 버튼(MENU, 옆에 ESC 표시)을 만든다
+    private static Button GameMenuButton(Transform canvas)
+    {
+        Transform old = canvas.Find("MenuButton");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        GameObject go = TMP_DefaultControls.CreateButton(new TMP_DefaultControls.Resources());
+        go.name = "MenuButton";
+        go.transform.SetParent(canvas, false);
+        go.GetComponentInChildren<TMP_Text>(true).text = "MENU";
+        Button button = go.GetComponent<Button>();
+        TextButton(button);
+        RectTransform rect = (RectTransform)go.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 1f);
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(48f, -28f);
+        rect.sizeDelta = new Vector2(110f, 48f);
+        foreach (TMP_Text label in go.GetComponentsInChildren<TMP_Text>(true))
+        {
+            label.fontSizeMax = 14f;
+            label.fontSize = 14f;
+        }
+        TMP_Text key = NewText(go.transform, "KeyHint", "ESC", s_sans, 11f, Dim, 4f);
+        RectTransform k = key.rectTransform;
+        k.anchorMin = k.anchorMax = new Vector2(1f, 0.5f);
+        k.pivot = new Vector2(0f, 0.5f);
+        k.anchoredPosition = new Vector2(2f, 1f);
+        k.sizeDelta = new Vector2(40f, 20f);
+        return button;
+    }
+
+    // 로비 메뉴 아래에 AI 연습 버튼과, 맨 아래 한 줄에 튜토리얼·규칙·설정·종료 작은 버튼을 글자 폭대로 나란히 만들고 로비 관리자에 연결한다(설정 버튼을 돌려준다)
+    private static Button LobbyMenuButtons(Transform canvas)
+    {
+        Transform lobby = canvas.Find("LobbyPanel");
+        Button practice = MenuTextButton(lobby, "PracticeButton", "PRACTICE VS AI", -840f, -420f, 22f);
+        float x = -840f;
+        Button tutorial = RowButton(lobby, "TutorialButton", "TUTORIAL", ref x);
+        RowButton(lobby, "RulesButton", "RULES", ref x);
+        Button settings = RowButton(lobby, "SettingsButton", "SETTINGS", ref x);
+        Button quit = RowButton(lobby, "QuitButton", "QUIT", ref x);
+
+        LobbyManager manager = Object.FindFirstObjectByType<LobbyManager>(FindObjectsInactive.Include);
+        SerializedObject so = new SerializedObject(manager);
+        so.FindProperty("_practiceButton").objectReferenceValue = practice;
+        so.FindProperty("_quitButton").objectReferenceValue = quit;
+        so.FindProperty("_tutorialButton").objectReferenceValue = tutorial;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        return settings;
+    }
+
+    // 로비 맨 아래 줄에 작은 글자 버튼을 하나 놓고 다음 버튼 자리로 x를 옮긴다
+    private static Button RowButton(Transform parent, string name, string label, ref float x)
+    {
+        Button button = MenuTextButton(parent, name, label, x, -492f, 15f);
+        x += ((RectTransform)button.transform).sizeDelta.x + 14f;
+        return button;
+    }
+
+    // 로비 왼쪽 메뉴 형식의 글자 버튼을 새로 만든다(같은 이름이 있으면 지우고 다시)
+    private static Button MenuTextButton(Transform parent, string name, string label, float x, float y, float size)
+    {
+        Transform old = parent.Find(name);
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        GameObject go = TMP_DefaultControls.CreateButton(new TMP_DefaultControls.Resources());
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        go.GetComponentInChildren<TMP_Text>(true).text = label;
+        Button button = go.GetComponent<Button>();
+        LeftButton(button, x, y);
+        TMP_Text main = go.GetComponentInChildren<TMP_Text>(true);
+        foreach (TMP_Text text in go.GetComponentsInChildren<TMP_Text>(true))
+        {
+            text.fontSize = size;
+            text.fontSizeMax = size;
+        }
+        FitButtonWidth(button, main);
+        ((RectTransform)go.transform).sizeDelta = new Vector2(((RectTransform)go.transform).sizeDelta.x, 48f);
+        return button;
+    }
+
+    // 로비에 규칙 설명 창(두 단 글, 닫기 버튼)을 만들고 RULES 버튼과 연결한다
+    private static void BuildRules(Transform canvas)
+    {
+        Transform old = canvas.Find("RulesPanel");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        Image scrim = NewImage(canvas, "RulesPanel");
+        scrim.color = new Color(0.012f, 0.01f, 0.008f, 1f);
+        Stretch(scrim.rectTransform);
+        Transform panel = scrim.transform;
+
+        TMP_Text title = NewText(panel, "Title", "HOW TO PLAY", s_serif, 52f, Gold, 10f);
+        title.rectTransform.anchoredPosition = new Vector2(0f, 400f);
+        title.rectTransform.sizeDelta = new Vector2(800f, 70f);
+        Hairline(panel, "TitleLine", new Vector2(0f, 356f), 80f);
+
+        RulesColumn(panel, "LeftColumn", RulesLeft, -330f);
+        RulesColumn(panel, "RightColumn", RulesRight, 330f);
+
+        Button close = CenterButton(panel, "CloseButton", "CLOSE", -440f);
+        UnityEditor.Events.UnityEventTools.AddBoolPersistentListener(close.onClick, scrim.gameObject.SetActive, false);
+        Button open = canvas.Find("LobbyPanel/RulesButton").GetComponent<Button>();
+        UnityEditor.Events.UnityEventTools.AddBoolPersistentListener(open.onClick, scrim.gameObject.SetActive, true);
+        scrim.gameObject.SetActive(false);
+    }
+
+    // 규칙 글 한 단을 만든다
+    private static void RulesColumn(Transform panel, string name, string text, float x)
+    {
+        TMP_Text column = NewText(panel, name, text, s_sans, 17f, new Color(Cream.r, Cream.g, Cream.b, 0.85f), 0.5f);
+        column.alignment = TextAlignmentOptions.TopLeft;
+        column.textWrappingMode = TextWrappingModes.Normal;
+        column.lineSpacing = 12f;
+        column.paragraphSpacing = 4f;
+        RectTransform rect = column.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(x, 320f);
+        rect.sizeDelta = new Vector2(580f, 720f);
+    }
+
+    // 게임 장면에 경기 결과 화면(승리/패배, 이유, 내 최종 칩, 돌아가는 중 안내)을 만든다
+    private static void BuildResult(Transform canvas)
+    {
+        Transform old = canvas.Find("GameResult");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        RectTransform root = (RectTransform)new GameObject("GameResult", typeof(RectTransform)).transform;
+        root.SetParent(canvas, false);
+        Stretch(root);
+        GameResultView view = root.gameObject.AddComponent<GameResultView>();
+
+        Image scrim = NewImage(root, "Panel");
+        scrim.color = new Color(0.012f, 0.01f, 0.008f, 0.975f);
+        Stretch(scrim.rectTransform);
+        CanvasGroup group = scrim.gameObject.AddComponent<CanvasGroup>();
+        Transform panel = scrim.transform;
+
+        TMP_Text victory = NewText(panel, "Victory", "VICTORY", s_serif, 110f, Gold, 24f);
+        victory.rectTransform.anchoredPosition = new Vector2(0f, 90f);
+        victory.rectTransform.sizeDelta = new Vector2(1200f, 140f);
+        TMP_Text defeat = NewText(panel, "Defeat", "DEFEAT", s_serif, 110f, new Color(0.78f, 0.36f, 0.3f), 24f);
+        defeat.rectTransform.anchoredPosition = new Vector2(0f, 90f);
+        defeat.rectTransform.sizeDelta = new Vector2(1200f, 140f);
+        Hairline(panel, "Line", new Vector2(0f, 10f), 120f);
+
+        TMP_Text outOfChips = ReasonText(panel, "OutOfChips", "THE CHIPS HAVE SPOKEN");
+        TMP_Text opponentSurrendered = ReasonText(panel, "OpponentSurrendered", "YOUR OPPONENT SURRENDERED");
+        TMP_Text youSurrendered = ReasonText(panel, "YouSurrendered", "YOU SURRENDERED");
+
+        TMP_Text chipsTitle = NewText(panel, "ChipsLabel", "FINAL CHIPS", s_sans, 14f, Dim, 6f);
+        chipsTitle.rectTransform.anchoredPosition = new Vector2(0f, -100f);
+        chipsTitle.rectTransform.sizeDelta = new Vector2(400f, 30f);
+        TMP_Text chips = NewText(panel, "ChipsValue", "0", s_serif, 56f, Cream, 2f);
+        chips.rectTransform.anchoredPosition = new Vector2(0f, -150f);
+        chips.rectTransform.sizeDelta = new Vector2(400f, 70f);
+        TMP_Text footer = NewText(panel, "Returning", "RETURNING TO THE TABLE", s_sans, 12f, new Color(Cream.r, Cream.g, Cream.b, 0.35f), 8f);
+        footer.rectTransform.anchoredPosition = new Vector2(0f, -300f);
+        footer.rectTransform.sizeDelta = new Vector2(600f, 30f);
+
+        SerializedObject so = new SerializedObject(view);
+        so.FindProperty("_group").objectReferenceValue = group;
+        so.FindProperty("_victory").objectReferenceValue = victory.gameObject;
+        so.FindProperty("_defeat").objectReferenceValue = defeat.gameObject;
+        so.FindProperty("_outOfChips").objectReferenceValue = outOfChips.gameObject;
+        so.FindProperty("_opponentSurrendered").objectReferenceValue = opponentSurrendered.gameObject;
+        so.FindProperty("_youSurrendered").objectReferenceValue = youSurrendered.gameObject;
+        so.FindProperty("_chipsValue").objectReferenceValue = chips;
+        so.ApplyModifiedPropertiesWithoutUndo();
+        root.SetAsLastSibling();
+    }
+
+    // 결과 이유 한 줄을 만든다
+    private static TMP_Text ReasonText(Transform panel, string name, string text)
+    {
+        TMP_Text reason = NewText(panel, name, text, s_sans, 16f, new Color(Cream.r, Cream.g, Cream.b, 0.7f), 8f);
+        reason.rectTransform.anchoredPosition = new Vector2(0f, -30f);
+        reason.rectTransform.sizeDelta = new Vector2(900f, 30f);
+        return reason;
+    }
+
+    // 게임 장면 왼쪽에 튜토리얼 안내 카드(단계 번호, 글, NEXT, 끝내기 버튼)를 만들고 단계 글을 넣는다
+    private static void BuildTutorial(Transform canvas)
+    {
+        Transform old = canvas.Find("TutorialGuide");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        RectTransform root = (RectTransform)new GameObject("TutorialGuide", typeof(RectTransform)).transform;
+        root.SetParent(canvas, false);
+        Stretch(root);
+        TutorialGuide guide = root.gameObject.AddComponent<TutorialGuide>();
+
+        Image card = NewImage(root, "Card");
+        card.color = new Color(0.02f, 0.017f, 0.014f, 0.995f);
+        RectTransform rect = card.rectTransform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0f, 0.5f);
+        rect.pivot = new Vector2(0f, 0.5f);
+        rect.anchoredPosition = new Vector2(64f, 60f);
+        rect.sizeDelta = new Vector2(500f, 300f);
+        Hairline(card.transform, "TopLine", new Vector2(0f, 150f), 500f);
+
+        TMP_Text counter = NewText(card.transform, "Counter", "1 / 15", s_sans, 13f, Gold, 6f);
+        counter.alignment = TextAlignmentOptions.TopLeft;
+        RectTransform c = counter.rectTransform;
+        c.anchorMin = c.anchorMax = new Vector2(0f, 1f);
+        c.pivot = new Vector2(0f, 1f);
+        c.anchoredPosition = new Vector2(32f, -26f);
+        c.sizeDelta = new Vector2(300f, 24f);
+
+        TMP_Text body = NewText(card.transform, "Body", "", s_serif, 27f, Cream, 0.5f);
+        body.alignment = TextAlignmentOptions.TopLeft;
+        body.textWrappingMode = TextWrappingModes.Normal;
+        body.lineSpacing = -6f;
+        RectTransform b = body.rectTransform;
+        b.anchorMin = b.anchorMax = new Vector2(0f, 1f);
+        b.pivot = new Vector2(0f, 1f);
+        b.anchoredPosition = new Vector2(32f, -62f);
+        b.sizeDelta = new Vector2(436f, 170f);
+
+        Button next = CornerButton(card.transform, "NextButton", "NEXT", new Vector2(-32f, 24f), new Vector2(1f, 0f));
+        Button finish = CornerButton(card.transform, "FinishButton", "BACK TO LOBBY", new Vector2(-32f, 24f), new Vector2(1f, 0f));
+        Button keep = CornerButton(card.transform, "KeepPlayingButton", "KEEP PLAYING", new Vector2(32f, 24f), new Vector2(0f, 0f));
+
+        SerializedObject so = new SerializedObject(guide);
+        so.FindProperty("_panel").objectReferenceValue = card.gameObject;
+        so.FindProperty("_counter").objectReferenceValue = counter;
+        so.FindProperty("_body").objectReferenceValue = body;
+        so.FindProperty("_next").objectReferenceValue = next;
+        so.FindProperty("_finish").objectReferenceValue = finish;
+        so.FindProperty("_keepPlaying").objectReferenceValue = keep;
+        SerializedProperty steps = so.FindProperty("_steps");
+        steps.arraySize = TutorialSteps.Length;
+        for (int i = 0; i < TutorialSteps.Length; i++) steps.GetArrayElementAtIndex(i).stringValue = TutorialSteps[i];
+        so.ApplyModifiedPropertiesWithoutUndo();
+
+        Transform settings = canvas.Find("SettingsMenu");
+        root.SetSiblingIndex(settings != null ? settings.GetSiblingIndex() : canvas.childCount - 1);
+    }
+
+    // 안내 카드 모서리에 붙는 작은 글자 버튼을 만든다
+    private static Button CornerButton(Transform parent, string name, string label, Vector2 position, Vector2 corner)
+    {
+        GameObject go = TMP_DefaultControls.CreateButton(new TMP_DefaultControls.Resources());
+        go.name = name;
+        go.transform.SetParent(parent, false);
+        TMP_Text text = go.GetComponentInChildren<TMP_Text>(true);
+        text.text = label;
+        Button button = go.GetComponent<Button>();
+        TextButton(button);
+        foreach (TMP_Text t in go.GetComponentsInChildren<TMP_Text>(true))
+        {
+            t.fontSize = 15f;
+            t.fontSizeMax = 15f;
+        }
+        RectTransform rect = (RectTransform)go.transform;
+        rect.anchorMin = rect.anchorMax = corner;
+        rect.pivot = corner;
+        rect.anchoredPosition = position;
+        FitButtonWidth(button, text);
+        rect.sizeDelta = new Vector2(rect.sizeDelta.x + 12f, 44f);
+        return button;
     }
 }

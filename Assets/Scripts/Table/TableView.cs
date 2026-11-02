@@ -42,6 +42,7 @@ public class TableView : MonoBehaviour
     private CardView _sharedCard;
     private GameManager _gm;
     private float _nextDealDelay;
+    private float _dealClock;
     private float _pendingDealDelay;
     private readonly List<CardView> _returning = new List<CardView>(4);
     private readonly List<float> _returnTimes = new List<float>(4);
@@ -68,7 +69,6 @@ public class TableView : MonoBehaviour
 
         _gm.StateChanged += Sync;
         _gm.RoundStarted += OnRoundStarted;
-        _gm.CardDealt += OnCardDealt;
         _gm.LastCardReplaced += OnLastCardReplaced;
         _gm.RoundRevealed += Sync;
         Sync();
@@ -81,7 +81,6 @@ public class TableView : MonoBehaviour
 
         _gm.StateChanged -= Sync;
         _gm.RoundStarted -= OnRoundStarted;
-        _gm.CardDealt -= OnCardDealt;
         _gm.LastCardReplaced -= OnLastCardReplaced;
         _gm.RoundRevealed -= Sync;
         _gm = null;
@@ -102,9 +101,6 @@ public class TableView : MonoBehaviour
         Sync();
     }
 
-    // 카드가 나뉘면 테이블을 맞춘다
-    private void OnCardDealt(ActivePlayer seat, int index) => Sync();
-
     // 마지막 카드가 바뀌면 봉투가 닿을 즈음 그 카드를 엎어 슈로 돌려보내고, 조금 뒤 슈에서 새 카드를 나눠준다
     private void OnLastCardReplaced(ActivePlayer seat)
     {
@@ -115,6 +111,7 @@ public class TableView : MonoBehaviour
             CardView old = views[last];
             views.RemoveAt(last);
             old.MoveTo(_deckTop.position, FaceRotation(_deckTop, faceUp: false), _dealDuration, _replaceReturnDelay, _dealArc);
+            PlayDealSound(_replaceReturnDelay);
             _returning.Add(old);
             _returnTimes.Add(Time.time + _replaceReturnDelay + _dealDuration);
             enabled = true;
@@ -150,8 +147,8 @@ public class TableView : MonoBehaviour
             _nextDealDelay = _pendingDealDelay;
             _pendingDealDelay = 0f;
             SyncShared();
-            SyncSide(_myCards, _mySide, Cards(local), isMine: true);
             SyncSide(_opponentCards, _opponentSide, Cards(opponent), isMine: false);
+            SyncSide(_myCards, _mySide, Cards(local), isMine: true);
         }
     }
 
@@ -168,8 +165,8 @@ public class TableView : MonoBehaviour
         bool decided = _gm.CurrentPlayer != ActivePlayer.None;
         for (int i = 0; i < _cutCards.Length; i++)
         {
-            ActivePlayer seat = i == 0 ? local : opponent;
-            Transform side = i == 0 ? _mySide : _opponentSide;
+            ActivePlayer seat = i == 0 ? opponent : local;
+            Transform side = i == 0 ? _opponentSide : _mySide;
             Vector3 position = Vector3.Lerp(side.position, _sharedSlot.position, _cutPull);
             Quaternion rotation = FaceRotation(side, decided);
             Card card = _gm.GetCutCard(seat);
@@ -206,6 +203,7 @@ public class TableView : MonoBehaviour
             if (view == null) continue;
             _cutCards[i] = null;
             view.MoveTo(_deckTop.position, FaceRotation(_deckTop, faceUp: false), _dealDuration, 0f, _dealArc);
+            PlayDealSound(0f);
             _returning.Add(view);
             _returnTimes.Add(Time.time + _dealDuration);
             _pendingDealDelay = _dealDuration;
@@ -269,17 +267,26 @@ public class TableView : MonoBehaviour
         }
     }
 
-    // 풀에서 카드를 꺼내 덱 위에 엎어 두고 테이블 위로 엎은 채 미끄러뜨린 뒤, 앞면이어야 하면 도착한 자리에서 뒤집는다
+    // 풀에서 카드를 꺼내 덱 위에 엎어 두고, 앞 카드가 출발한 뒤 차례가 오면 테이블 위로 엎은 채 미끄러뜨리고(소리와 함께) 앞면이어야 하면 도착한 자리에서 뒤집는다
     private CardView Deal(Card card, bool faceUp, Vector3 position, Quaternion rotation)
     {
+        float delay = Mathf.Max(_nextDealDelay, _dealClock - Time.time);
         CardView view = _pool.Get();
         view.SetCard(card, faceUp);
         view.Snap(_deckTop.position, FaceRotation(_deckTop, faceUp: false));
         Quaternion slideRotation = faceUp ? rotation * FaceDownTurn : rotation;
-        view.MoveTo(position, slideRotation, _slideDuration, _nextDealDelay, _slideLift, slide: true);
+        view.MoveTo(position, slideRotation, _slideDuration, delay, _slideLift, slide: true);
         if (faceUp) view.QueueFlip(rotation, _flipDuration, _landFlipArc);
-        _nextDealDelay += _dealStagger;
+        PlayDealSound(delay);
+        _dealClock = Time.time + delay + _dealStagger;
+        _nextDealDelay = 0f;
         return view;
+    }
+
+    // 카드 한 장이 움직이기 시작할 때 소리를 내게 한다
+    private static void PlayDealSound(float delay)
+    {
+        if (SoundManager.Instance != null) SoundManager.Instance.PlayDeal(delay);
     }
 
     // 목록의 카드를 모두 풀로 돌려보낸다

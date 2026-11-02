@@ -26,13 +26,13 @@ public class TableInput : MonoBehaviour
         _mask = LayerMask.GetMask(InteractableLayer);
     }
 
-    // 커서 아래의 물건을 강조하고 왼쪽 클릭이면 행동을, 오른쪽 클릭이면 보조 행동을 요청하며, 누르고 있으면 반복하는 물건은 잠시 뒤부터 계속 요청한다
+    // 설정 창이 열려 있지 않으면 커서 아래의 물건을 강조하고 왼쪽 클릭이면 행동을, 오른쪽 클릭이면 보조 행동을 요청하며, 누르고 있으면 반복하는 물건은 잠시 뒤부터 계속 요청한다
     private void Update()
     {
         Mouse mouse = Mouse.current;
         if (mouse == null || _camera == null) return;
 
-        Interactable target = FindTarget(mouse);
+        Interactable target = SettingsMenu.IsOpen ? null : FindTarget(mouse);
         Interactable usable = target != null && target.CanInteract() ? target : null;
 
         if (usable != _highlighted)

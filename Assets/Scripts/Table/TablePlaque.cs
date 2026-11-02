@@ -7,8 +7,8 @@ public class TablePlaque : Interactable
     [SerializeField] private TextMeshPro _label;
     [SerializeField] private TextMeshPro _altLabel;
     [SerializeField] private TextMeshPro _cancelLabel;
-    [SerializeField] private Color _availableColor = new Color(0.12f, 0.08f, 0.04f);
-    [SerializeField] private Color _unavailableColor = new Color(0.12f, 0.08f, 0.04f, 0.3f);
+    [SerializeField] private Color _availableColor = new Color(0.04f, 0.025f, 0.01f);
+    [SerializeField] private Color _unavailableColor = new Color(0.12f, 0.08f, 0.04f, 0.18f);
     [SerializeField] private string _altStatePrompt;
     [SerializeField] private string _cancelStatePrompt;
 

@@ -148,6 +148,14 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         return false;
     }
 
+    // 로비 접속을 끊고 AI 상대와의 연습(또는 튜토리얼) 게임 장면으로 간다
+    public async void StartPractice(bool tutorial = false)
+    {
+        await ShutdownRunnerAsync();
+        PracticeMode.Begin(tutorial);
+        SceneManager.LoadScene(_gameSceneIndex);
+    }
+
     // 방을 나가 로비 씬으로 이동한다
     public async void LeaveToLobby()
     {

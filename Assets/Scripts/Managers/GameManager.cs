@@ -97,6 +97,7 @@ public class GameManager : MonoBehaviour
     private ActivePlayer _diedPlayer = ActivePlayer.None;
     private ActivePlayer _lastLoser = ActivePlayer.None;
     private ActivePlayer _cutWinner = ActivePlayer.None;
+    private ActivePlayer _surrendered = ActivePlayer.None;
     private readonly Card[] _cutCards = new Card[2];
     private Item _pendingItem;
     private ActivePlayer _pendingItemPlayer = ActivePlayer.None;
@@ -113,6 +114,7 @@ public class GameManager : MonoBehaviour
     public event Action RoundRevealed;
     public event Action<Card> PeekShown;
     public event Action<ActivePlayer, ItemType> ItemUsed;
+    public event Action<ActivePlayer> BellRung;
     public event Action<GameEndReason> GameEnded;
 
     private GamePhase _notifiedPhase;
@@ -138,6 +140,7 @@ public class GameManager : MonoBehaviour
     public Item PendingItem => _pendingItem;
     public ActivePlayer PendingItemPlayer => _pendingItemPlayer;
     public Card PeekedCard { get; private set; }
+    public ActivePlayer Surrendered => _surrendered;
     public bool IsCutting => CurrentPhase == GamePhase.FirstTurnDetermination && _cutCards[0] != null;
 
     public int CallAmount => CurrentPlayer == ActivePlayer.None
@@ -201,11 +204,12 @@ public class GameManager : MonoBehaviour
         Instance = this;
     }
 
-    // 네트워크가 없으면 로컬 게임을 시작한다
+    // 네트워크가 없으면 로컬 게임을 시작하고, AI 연습이면 상대 자리에 AI를 앉힌다(튜토리얼은 안내가 시작 시점을 정한다)
     private void Start()
     {
-        if (Net == null)
-            InitializeGame(CharacterType.King, CharacterType.Queen);
+        if (Net != null || PracticeMode.Tutorial) return;
+        InitializeGame(PracticeMode.PlayerCharacter, PracticeMode.BotCharacter);
+        if (PracticeMode.Active && !PracticeMode.Tutorial) gameObject.AddComponent<PracticeBot>();
     }
 
     // 선택한 캐릭터로 새 매치를 시작한다
@@ -217,6 +221,7 @@ public class GameManager : MonoBehaviour
         _pot = 0;
         _isFirstRound = true;
         _lastLoser = ActivePlayer.None;
+        _surrendered = ActivePlayer.None;
 
         SetCharacter(ActivePlayer.Player1, p1Type);
         SetCharacter(ActivePlayer.Player2, p2Type);
@@ -236,8 +241,8 @@ public class GameManager : MonoBehaviour
                 cutDeck.Add(new Card(rank, suit));
         Shuffle(cutDeck);
 
-        _cutCards[0] = cutDeck[0];
-        _cutCards[1] = cutDeck[1];
+        _cutCards[0] = PracticeMode.Tutorial ? new Card(Rank.Nine, Suit.Spade) : cutDeck[0];
+        _cutCards[1] = PracticeMode.Tutorial ? new Card(Rank.Four, Suit.Heart) : cutDeck[1];
         _cutWinner = Outranks(_cutCards[0], _cutCards[1]) ? ActivePlayer.Player1 : ActivePlayer.Player2;
         CurrentPhase = GamePhase.FirstTurnDetermination;
         CurrentPlayer = ActivePlayer.None;
@@ -260,6 +265,9 @@ public class GameManager : MonoBehaviour
         if (card == null) return null;
         return CurrentPlayer == ActivePlayer.None ? HiddenCard : card;
     }
+
+    // 좌석이 카드 받기를 멈췄는지 확인한다
+    public bool IsStanding(ActivePlayer seat) => S(seat).Hand != null && S(seat).Hand.IsStanding;
 
     // 좌석의 에이스 선택이 확정됐는지 확인한다
     public bool IsAceConfirmed(ActivePlayer seat) => S(seat).Hand != null && S(seat).Hand.AceSelectionConfirmed;
@@ -319,6 +327,8 @@ public class GameManager : MonoBehaviour
         if (_deck == null || _deck.Count < MinDeckSize)
         {
             _deck = NewDeck();
+            foreach (Seat seat in _seats)
+                if (seat.Character?.Type == CharacterType.Joker) _deck.InsertJoker();
             Debug.Log("[덱 리셔플]");
         }
 
@@ -412,13 +422,18 @@ public class GameManager : MonoBehaviour
         Commit();
     }
 
-    // 현재 플레이어가 카드 받기를 마친다
-    public void OnStand()
+    // 현재 플레이어가 카드 받기를 마친다(종을 눌러 멈췄으면 종소리를 알린다)
+    public void OnStand(bool rang = false)
     {
         if (!CanStand) return;
 
         CurrentSeat.Hand.Stand();
         Debug.Log($"[스탠드] {CurrentPlayer}");
+        if (rang)
+        {
+            HostNet?.SendBell(CurrentPlayer);
+            BellRung?.Invoke(CurrentPlayer);
+        }
 
         if (!TryAdvancePhase())
             SwitchTurn();
@@ -725,6 +740,27 @@ public class GameManager : MonoBehaviour
         BeginRound();
     }
 
+    // 항복한 쪽의 칩과 팟을 모두 상대에게 넘기고 매치를 끝낸다
+    public void OnSurrender(ActivePlayer player)
+    {
+        if (player == ActivePlayer.None || CurrentPhase == GamePhase.GameEnd) return;
+
+        StopAllCoroutines();
+        ActivePlayer winner = Opponent(player);
+        Transfer(player, winner, S(player).Chips);
+        S(winner).Chips += _pot;
+        _pot = 0;
+        foreach (Seat seat in _seats) seat.TotalBet = 0;
+        _cutCards[0] = _cutCards[1] = null;
+        _pendingItem = null;
+        _pendingItemPlayer = ActivePlayer.None;
+        _surrendered = player;
+        CurrentPhase = GamePhase.GameEnd;
+        CurrentPlayer = ActivePlayer.None;
+        Debug.Log($"[항복] {player} → 승자 {winner}");
+        Commit();
+    }
+
     // 상대가 나가면 매치를 즉시 끝내고 로비로 돌아간다
     public void HandleOpponentLeft()
     {
@@ -834,6 +870,23 @@ public class GameManager : MonoBehaviour
         HostDiscard(player, discardIndex);
     }
 
+    // 아이템을 주고 바로 화면에 알린다(튜토리얼)
+    public void GrantItem(ActivePlayer player, ItemType type)
+    {
+        AddItem(player, type);
+        Commit();
+    }
+
+    // 다음에 뽑힐 카드들을 순서대로 덱 맨 위에 올린다(튜토리얼의 정해진 패)
+    public void StackDeckTop(IReadOnlyList<Card> cards)
+    {
+        for (int i = cards.Count - 1; i >= 0; i--)
+            _deck.PushTop(cards[i]);
+    }
+
+    // AI가 돋보기를 쓰고 본 카드를 돌려받는다
+    public Card HostUseMagnifierFor(ActivePlayer seat) => HostUseMagnifier(seat);
+
     // 요청받은 아이템을 종류에 맞게 실행한다
     public void HostUseItem(ActivePlayer seat, ItemType type)
     {
@@ -856,7 +909,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[돋보기] {player} / 다음 카드: {next}");
         RaiseItemUsed(player, ItemType.Magnifier);
         HostNet?.SendPeek(player, next);
-        if (IsLocalSeat(player))
+        if (player == LocalSeat)
             PeekShown?.Invoke(next);
         Commit();
         return next;
@@ -996,7 +1049,8 @@ public class GameManager : MonoBehaviour
         PendingItemPlayer = (byte)_pendingItemPlayer,
         PendingItem = _pendingItem == null ? GameSnapshot.None : (byte)_pendingItem.Type,
         CutP1 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player1)),
-        CutP2 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player2))
+        CutP2 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player2)),
+        Surrendered = (byte)_surrendered
     };
 
     // 좌석의 캐릭터를 번호로 바꾼다
@@ -1010,6 +1064,7 @@ public class GameManager : MonoBehaviour
 
         _cutCards[0] = GameSnapshot.UnpackCard(s.CutP1);
         _cutCards[1] = GameSnapshot.UnpackCard(s.CutP2);
+        _surrendered = (ActivePlayer)s.Surrendered;
         _round = s.Round;
         CurrentPhase = (GamePhase)s.Phase;
         CurrentPlayer = (ActivePlayer)s.Current;
@@ -1076,6 +1131,9 @@ public class GameManager : MonoBehaviour
         LastCardReplaced?.Invoke(seat);
         NotifyStateChanged();
     }
+
+    // 게스트에서 종소리를 알린다
+    public void MirrorBell(ActivePlayer seat) => BellRung?.Invoke(seat);
 
     // 게스트에서 아이템 사용을 알린다
     public void MirrorItemUsed(ActivePlayer seat, ItemType type) => ItemUsed?.Invoke(seat, type);

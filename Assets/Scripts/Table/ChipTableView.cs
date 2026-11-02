@@ -222,7 +222,7 @@ public class ChipTableView : MonoBehaviour
         return launched;
     }
 
-    // 도착한 비행을 더미에 더하고 모든 칩을 액면가별로 한 번씩 인스턴싱해 그린다
+    // 도착한 비행을 더미에 더하고(칩마다 내려앉는 소리) 모든 칩을 액면가별로 한 번씩 인스턴싱해 그린다
     private void LateUpdate()
     {
         if (!_initialized) return;
@@ -234,6 +234,7 @@ public class ChipTableView : MonoBehaviour
             if (now - flight.StartTime < _flightDuration) continue;
 
             int value = Denominations[flight.Denomination];
+            if (SoundManager.Instance != null) SoundManager.Instance.PlayChip();
             _shown[flight.To] += value;
             _incoming[flight.To] -= value;
             _flights[i] = _flights[_flights.Count - 1];

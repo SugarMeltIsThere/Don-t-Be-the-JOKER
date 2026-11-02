@@ -24,11 +24,19 @@ public static class PlayerActions
         else Game.OnHit();
     }
 
-    // 스탠드를 요청한다
+    // 종을 눌러 스탠드를 요청한다
     public static void Stand()
     {
         if (Net != null) Net.RequestStand();
-        else Game.OnStand();
+        else Game.OnStand(rang: true);
+    }
+
+    // 항복을 요청한다
+    public static void Surrender()
+    {
+        if (Game == null) return;
+        if (Net != null) Net.RequestSurrender();
+        else Game.OnSurrender(LocalSeat);
     }
 
     // 레이즈를 요청한다

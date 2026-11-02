@@ -23,6 +23,9 @@ public class LobbyManager : MonoBehaviour
     [SerializeField] private TMP_InputField _roomCodeInput;
     [SerializeField] private Button _createButton;
     [SerializeField] private Button _joinButton;
+    [SerializeField] private Button _practiceButton;
+    [SerializeField] private Button _quitButton;
+    [SerializeField] private Button _tutorialButton;
     [SerializeField] private TMP_InputField _nicknameInput;
 
     [Header("Create Room Panel")]
@@ -102,6 +105,10 @@ public class LobbyManager : MonoBehaviour
         _startButton.onClick.AddListener(OnStartGame);
         _leaveButton.onClick.AddListener(() => ConnectToLobby());
         _resultConfirmButton.onClick.AddListener(() => _resultPanel.SetActive(false));
+        PracticeMode.End();
+        if (_practiceButton != null) _practiceButton.onClick.AddListener(() => Net.StartPractice());
+        if (_quitButton != null) _quitButton.onClick.AddListener(Application.Quit);
+        if (_tutorialButton != null) _tutorialButton.onClick.AddListener(() => Net.StartPractice(tutorial: true));
 
         Bind(_kingButton, CharacterType.King);
         Bind(_queenButton, CharacterType.Queen);
