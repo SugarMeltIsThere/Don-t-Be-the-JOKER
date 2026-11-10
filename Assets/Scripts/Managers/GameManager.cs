@@ -30,6 +30,17 @@ public enum BettingAction
     Die
 }
 
+public enum RoundOutcome : byte
+{
+    None,
+    Closer,
+    Bust,
+    Fold,
+    Joker,
+    HighCard,
+    Push
+}
+
 public enum GameEndReason
 {
     Normal,
@@ -50,6 +61,9 @@ public class GameManager : MonoBehaviour
     private const int ItemStreakInterval = 2;
     private const int DefaultItemSlots = 2;
     private const float RoundEndRevealDuration = 2.5f;
+    private const float JokerRevealDuration = 1.2f;
+    private const float ResultHoldBeforeChips = 1.5f;
+    private const float ChipSettleDuration = 1.6f;
     private const float CutRevealDelay = 1.6f;
     private const float CutHoldDuration = 2.6f;
 
@@ -98,6 +112,11 @@ public class GameManager : MonoBehaviour
     private ActivePlayer _lastLoser = ActivePlayer.None;
     private ActivePlayer _cutWinner = ActivePlayer.None;
     private ActivePlayer _surrendered = ActivePlayer.None;
+    private ActivePlayer _jokerDrawer = ActivePlayer.None;
+    private ActivePlayer _roundWinner = ActivePlayer.None;
+    private RoundOutcome _roundOutcome = RoundOutcome.None;
+    private int _roundGain;
+    private int _roundLoss;
     private readonly Card[] _cutCards = new Card[2];
     private Item _pendingItem;
     private ActivePlayer _pendingItemPlayer = ActivePlayer.None;
@@ -115,6 +134,7 @@ public class GameManager : MonoBehaviour
     public event Action<Card> PeekShown;
     public event Action<ActivePlayer, ItemType> ItemUsed;
     public event Action<ActivePlayer> BellRung;
+    public event Action<ActivePlayer> JokerDrawn;
     public event Action<GameEndReason> GameEnded;
 
     private GamePhase _notifiedPhase;
@@ -141,6 +161,12 @@ public class GameManager : MonoBehaviour
     public ActivePlayer PendingItemPlayer => _pendingItemPlayer;
     public Card PeekedCard { get; private set; }
     public ActivePlayer Surrendered => _surrendered;
+    public ActivePlayer JokerDrawer => _jokerDrawer;
+    public ActivePlayer RoundWinner => _roundWinner;
+    public RoundOutcome RoundOutcome => _roundOutcome;
+    public int RoundGain => _roundGain;
+    public int RoundLoss => _roundLoss;
+    public int Round => _round;
     public bool IsCutting => CurrentPhase == GamePhase.FirstTurnDetermination && _cutCards[0] != null;
 
     public int CallAmount => CurrentPlayer == ActivePlayer.None
@@ -339,6 +365,8 @@ public class GameManager : MonoBehaviour
         Debug.Log($"[공유카드] {_sharedCard}");
 
         _round++;
+        _jokerDrawer = ActivePlayer.None;
+        ClearRoundResult();
         foreach (Seat seat in _seats)
         {
             seat.Hand = new PlayerHand(_sharedCard);
@@ -409,7 +437,7 @@ public class GameManager : MonoBehaviour
         Card drawn = _deck.Draw();
         if (drawn.Rank == Rank.Joker)
         {
-            HandleJokerDraw();
+            HandleJokerDraw(drawn);
             Commit();
             return;
         }
@@ -466,21 +494,40 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
-    // 조커를 뽑은 플레이어에게 패널티를 주고 라운드를 끝낸다
-    private void HandleJokerDraw()
+    // 조커를 뽑은 플레이어 앞에 조커를 앞면으로 내놓고 패널티를 걷은 뒤, 잠시 보여 주고 라운드를 끝낸다
+    private void HandleJokerDraw(Card joker)
     {
         ActivePlayer drawer = CurrentPlayer;
         Debug.Log($"[조커] {drawer} 조커 드로우 → 즉시 패배");
 
-        int penalty = Mathf.Min(JokerPenalty, S(drawer).Chips);
-        Transfer(drawer, Opponent(drawer), penalty);
-        Debug.Log($"[조커 패널티] {drawer} 칩 {penalty}개 징수 / P1: {Player1Chips} / P2: {Player2Chips}");
+        Deal(drawer, joker);
+        S(drawer).Hand.RevealLastCard();
+        _jokerDrawer = drawer;
+        HostNet?.SendJoker(drawer);
+        JokerDrawn?.Invoke(drawer);
 
         CurrentPhase = GamePhase.RoundEnd;
         CurrentPlayer = ActivePlayer.None;
+        StartCoroutine(JokerSequence(drawer));
+    }
 
+    // 조커를 잠시 보여 준 뒤 결과를 알리고, 결과가 눈에 들어온 다음 패널티 칩을 옮기고, 경기 종료나 다음 라운드로 넘어간다
+    private IEnumerator JokerSequence(ActivePlayer drawer)
+    {
+        yield return new WaitForSeconds(JokerRevealDuration);
+        ActivePlayer winner = Opponent(drawer);
+        int penalty = Mathf.Min(JokerPenalty, S(drawer).Chips);
+        ShowRoundResult(winner, RoundOutcome.Joker, penalty, penalty);
+
+        yield return new WaitForSeconds(ResultHoldBeforeChips);
+        Transfer(drawer, winner, penalty);
+        Debug.Log($"[조커 패널티] {drawer} 칩 {penalty}개 징수 / P1: {Player1Chips} / P2: {Player2Chips}");
+        Commit();
+
+        yield return new WaitForSeconds(ChipSettleDuration);
         if (!TryEndMatch())
-            SettleRound(Opponent(drawer));
+            SettleRound(winner);
+        Commit();
     }
 
     // 에이스 값을 11 또는 1로 바꾼다
@@ -617,23 +664,71 @@ public class GameManager : MonoBehaviour
         StartCoroutine(RoundEndSequence(isDie));
     }
 
-    // 연출 시간이 지난 뒤 승자를 판정한다
+    // 패를 공개한 채 잠시 두고, 승패와 이유를 먼저 알린 뒤, 결과가 눈에 들어온 다음 칩을 옮기고, 경기 종료나 다음 라운드로 넘어간다
     private IEnumerator RoundEndSequence(bool isDie)
     {
         yield return new WaitForSeconds(RoundEndRevealDuration);
-        DetermineWinner(isDie);
+        ActivePlayer winner = GetWinner();
+        int diePenalty = DiePenaltyFor(isDie);
+        int gain = winner != ActivePlayer.None ? _pot - S(winner).TotalBet + diePenalty : 0;
+        int loss = winner != ActivePlayer.None ? S(Opponent(winner)).TotalBet + diePenalty : 0;
+        ShowRoundResult(winner, OutcomeOf(winner, isDie), gain, loss);
+
+        yield return new WaitForSeconds(ResultHoldBeforeChips);
+        PayOutRound(winner, diePenalty);
+        Commit();
+
+        yield return new WaitForSeconds(ChipSettleDuration);
+        if (!TryEndMatch())
+            SettleRound(winner);
         Commit();
     }
 
-    // 승자를 판정해 팟을 정산한다
-    private void DetermineWinner(bool isDie)
+    // 라운드 승자, 이유, 이긴 쪽이 실제로 늘어난 칩과 진 쪽이 실제로 잃은 칩(자기가 건 몫은 돌려받은 것이라 빼고)을 기록하고 알린다
+    private void ShowRoundResult(ActivePlayer winner, RoundOutcome outcome, int gain, int loss)
+    {
+        _roundWinner = winner;
+        _roundOutcome = outcome;
+        _roundGain = gain;
+        _roundLoss = loss;
+        Debug.Log($"[라운드 결과] 승자 {winner} / {outcome} / +{gain} / -{loss}");
+        Commit();
+    }
+
+    // 라운드 결과 기록을 지운다
+    private void ClearRoundResult()
+    {
+        _roundWinner = ActivePlayer.None;
+        _roundOutcome = RoundOutcome.None;
+        _roundGain = 0;
+        _roundLoss = 0;
+    }
+
+    // 승자가 왜 이겼는지(다이, 버스트, 21에 더 가까움, 높은 카드, 무승부) 정한다
+    private RoundOutcome OutcomeOf(ActivePlayer winner, bool isDie)
+    {
+        if (winner == ActivePlayer.None) return RoundOutcome.Push;
+        if (isDie) return RoundOutcome.Fold;
+        PlayerHand h1 = _seats[0].Hand;
+        PlayerHand h2 = _seats[1].Hand;
+        if (h1.IsBusted != h2.IsBusted) return RoundOutcome.Bust;
+        return Mathf.Abs(Blackjack - h1.GetTotal()) != Mathf.Abs(Blackjack - h2.GetTotal()) ? RoundOutcome.Closer : RoundOutcome.HighCard;
+    }
+
+    // 상대가 버스트였는데 다이했으면 더 내야 할 칩 수를 구한다
+    private int DiePenaltyFor(bool isDie)
+    {
+        if (!isDie || _diedPlayer == ActivePlayer.None || !S(Opponent(_diedPlayer)).Hand.IsBusted) return 0;
+        return Mathf.Min(DiePenalty, S(_diedPlayer).Chips);
+    }
+
+    // 팟(과 다이 패널티)을 승자에게 옮긴다
+    private void PayOutRound(ActivePlayer winner, int diePenalty)
     {
         PlayerHand h1 = _seats[0].Hand;
         PlayerHand h2 = _seats[1].Hand;
         Debug.Log($"[최종 합계] P1: {h1.GetTotal()} / P2: {h2.GetTotal()}");
         Debug.Log($"[버스트 여부] P1: {h1.IsBusted} / P2: {h2.IsBusted}");
-
-        ActivePlayer winner = GetWinner();
 
         if (winner != ActivePlayer.None)
         {
@@ -646,15 +741,11 @@ public class GameManager : MonoBehaviour
             Debug.Log($"[무승부] 팟 {_pot}개 보류");
         }
 
-        if (isDie && _diedPlayer != ActivePlayer.None && S(Opponent(_diedPlayer)).Hand.IsBusted)
+        if (diePenalty > 0)
         {
-            int penalty = Mathf.Min(DiePenalty, S(_diedPlayer).Chips);
-            Transfer(_diedPlayer, Opponent(_diedPlayer), penalty);
-            Debug.Log($"[다이 패널티] {_diedPlayer} 칩 {penalty}개 추가 징수");
+            Transfer(_diedPlayer, Opponent(_diedPlayer), diePenalty);
+            Debug.Log($"[다이 패널티] {_diedPlayer} 칩 {diePenalty}개 추가 징수");
         }
-
-        if (TryEndMatch()) return;
-        SettleRound(winner);
     }
 
     // 에이스 선택 상태를 비트마스크로 만든다
@@ -972,6 +1063,14 @@ public class GameManager : MonoBehaviour
             _deck.DebugPushTop(new Card(Rank.Ace, (Suit)(i % 4)));
         Debug.Log($"[테스트] 다음 {count}장 에이스");
     }
+
+    // 테스트용으로 다음에 뽑힐 카드를 조커로 만든다
+    public void DebugStackJoker()
+    {
+        if (IsMirror || _deck == null) return;
+        _deck.DebugPushTop(new Card(Rank.Joker, Suit.Spade));
+        Debug.Log("[테스트] 다음 카드 조커");
+    }
 #endif
 
     // 아이템 사용을 게스트에 보내고 구독자에게 알린다
@@ -1050,6 +1149,10 @@ public class GameManager : MonoBehaviour
         PendingItem = _pendingItem == null ? GameSnapshot.None : (byte)_pendingItem.Type,
         CutP1 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player1)),
         CutP2 = GameSnapshot.PackCard(GetCutCard(ActivePlayer.Player2)),
+        ResultWinner = (byte)_roundWinner,
+        ResultOutcome = (byte)_roundOutcome,
+        ResultGain = _roundGain,
+        ResultLoss = _roundLoss,
         Surrendered = (byte)_surrendered
     };
 
@@ -1065,6 +1168,10 @@ public class GameManager : MonoBehaviour
         _cutCards[0] = GameSnapshot.UnpackCard(s.CutP1);
         _cutCards[1] = GameSnapshot.UnpackCard(s.CutP2);
         _surrendered = (ActivePlayer)s.Surrendered;
+        _roundWinner = (ActivePlayer)s.ResultWinner;
+        _roundOutcome = (RoundOutcome)s.ResultOutcome;
+        _roundGain = s.ResultGain;
+        _roundLoss = s.ResultLoss;
         _round = s.Round;
         CurrentPhase = (GamePhase)s.Phase;
         CurrentPlayer = (ActivePlayer)s.Current;
@@ -1100,6 +1207,8 @@ public class GameManager : MonoBehaviour
     public void MirrorRoundStart(int round, Card sharedCard)
     {
         _round = round;
+        _jokerDrawer = ActivePlayer.None;
+        ClearRoundResult();
         _sharedCard = sharedCard;
         foreach (Seat seat in _seats)
             seat.Hand = new PlayerHand(sharedCard);
@@ -1129,6 +1238,15 @@ public class GameManager : MonoBehaviour
 
         hand.ReplaceLastCard(card);
         LastCardReplaced?.Invoke(seat);
+        NotifyStateChanged();
+    }
+
+    // 게스트에서 조커를 뽑은 자리의 마지막 카드를 앞면으로 공개하고 알린다
+    public void MirrorJoker(ActivePlayer seat)
+    {
+        S(seat).Hand?.RevealLastCard();
+        _jokerDrawer = seat;
+        JokerDrawn?.Invoke(seat);
         NotifyStateChanged();
     }
 

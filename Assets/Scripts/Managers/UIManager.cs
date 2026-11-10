@@ -274,6 +274,7 @@ public class UIManager : MonoBehaviour
             GamePhase.AceSelection => gm.IsAceConfirmed(PlayerActions.LocalSeat) ? "WAITING FOR OPPONENT" : "SELECT ACES",
             GamePhase.Betting => myTurn ? "BETTING · YOUR TURN" : "BETTING · OPPONENT'S TURN",
             GamePhase.CardReveal => "REVEAL",
+            GamePhase.RoundEnd when gm.JokerDrawer != ActivePlayer.None => gm.JokerDrawer == PlayerActions.LocalSeat ? "YOU DREW THE JOKER" : "OPPONENT DREW THE JOKER",
             GamePhase.RoundEnd => "REVEAL",
             GamePhase.ItemDiscard => "ITEM DISCARD",
             GamePhase.GameEnd => "GAME OVER",

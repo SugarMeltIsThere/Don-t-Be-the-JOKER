@@ -103,7 +103,7 @@ public class LobbyManager : MonoBehaviour
         _readyButton.onClick.AddListener(OnReady);
         if (_cancelReadyButton != null) _cancelReadyButton.onClick.AddListener(OnReady);
         _startButton.onClick.AddListener(OnStartGame);
-        _leaveButton.onClick.AddListener(() => ConnectToLobby());
+        _leaveButton.onClick.AddListener(() => Net.LeaveToLobby());
         _resultConfirmButton.onClick.AddListener(() => _resultPanel.SetActive(false));
         PracticeMode.End();
         if (_practiceButton != null) _practiceButton.onClick.AddListener(() => Net.StartPractice());
@@ -122,8 +122,10 @@ public class LobbyManager : MonoBehaviour
         Net.RoomListUpdated += OnRoomListUpdated;
         Net.SessionEnded += OnSessionEnded;
 
+        if (string.IsNullOrEmpty(_nicknameInput.text)) _nicknameInput.text = Net.Nickname;
         if (Net.HasSession) ShowWaiting();
-        else ConnectToLobby();
+        else ConnectToLobby(Net.PendingLobbyNotice);
+        Net.PendingLobbyNotice = null;
 
         if (Net.PendingGameResultText != null)
         {
@@ -195,8 +197,12 @@ public class LobbyManager : MonoBehaviour
         ShowPanel(_lobbyPanel);
     }
 
-    // 세션이 끝나면 로비로 돌아간다
-    private void OnSessionEnded(string reason) => ConnectToLobby("Disconnected from the room.");
+    // 세션이 끝나면 로비로 돌아간다(방에 있었으면 장면을 새로 불러와 대기실 오브젝트를 되살린다)
+    private void OnSessionEnded(string reason)
+    {
+        if (_waitingPanel.activeSelf) Net.LeaveToLobby("Disconnected from the room.");
+        else ConnectToLobby("Disconnected from the room.");
+    }
 
     // 방 코드를 무작위로 만든다
     private static string GenerateRoomCode()

@@ -561,7 +561,9 @@ public static class UiRedesign
             r.anchoredPosition = new Vector2(i * 150f, 10f);
             r.sizeDelta = new Vector2(140f, 60f);
         }
-        Clear(characters.Find("MyCharacterPanel").GetComponent<Image>());
+        Image myCharacterPanel = characters.Find("MyCharacterPanel").GetComponent<Image>();
+        Clear(myCharacterPanel);
+        myCharacterPanel.raycastTarget = false;
         Transform plateTitle = characters.Find("MyCharacterPanel/Title");
         if (plateTitle != null) plateTitle.gameObject.SetActive(false);
         TMP_Text mine = characters.Find("MySelectedCharacter").GetComponent<TMP_Text>();
@@ -1003,7 +1005,7 @@ public static class UiRedesign
         return SaveSprite(texture, name, new Vector4(b, b, b, b));
     }
 
-    // 텍스처를 PNG로 저장하고 스프라이트로 들여온다
+    // 텍스처를 PNG로 저장하고 스프라이트로 들여온다(압축하지 않아 불투명한 곳이 정확히 불투명하게 남는다)
     private static Sprite SaveSprite(Texture2D texture, string name, Vector4 border)
     {
         texture.Apply();
@@ -1017,6 +1019,7 @@ public static class UiRedesign
         importer.spriteBorder = border;
         importer.alphaIsTransparency = true;
         importer.mipmapEnabled = false;
+        importer.textureCompression = TextureImporterCompression.Uncompressed;
         importer.SaveAndReimport();
         return AssetDatabase.LoadAssetAtPath<Sprite>(path);
     }
@@ -1040,7 +1043,7 @@ public static class UiRedesign
         SettingsMenu menu = menuRoot.gameObject.AddComponent<SettingsMenu>();
 
         Image scrim = NewImage(menuRoot, "Panel");
-        scrim.color = new Color(0.012f, 0.01f, 0.008f, 0.99f);
+        scrim.color = new Color(0.012f, 0.01f, 0.008f, 1f);
         Stretch(scrim.rectTransform);
         Transform panel = scrim.transform;
 
@@ -1086,6 +1089,7 @@ public static class UiRedesign
         if (inGame)
         {
             BuildResult(canvas);
+            BuildRoundBanner(canvas);
             BuildTutorial(canvas);
         }
         else BuildRules(canvas);
@@ -1324,7 +1328,7 @@ public static class UiRedesign
         GameResultView view = root.gameObject.AddComponent<GameResultView>();
 
         Image scrim = NewImage(root, "Panel");
-        scrim.color = new Color(0.012f, 0.01f, 0.008f, 0.975f);
+        scrim.color = new Color(0.012f, 0.01f, 0.008f, 1f);
         Stretch(scrim.rectTransform);
         CanvasGroup group = scrim.gameObject.AddComponent<CanvasGroup>();
         Transform panel = scrim.transform;
@@ -1383,7 +1387,7 @@ public static class UiRedesign
         TutorialGuide guide = root.gameObject.AddComponent<TutorialGuide>();
 
         Image card = NewImage(root, "Card");
-        card.color = new Color(0.02f, 0.017f, 0.014f, 0.995f);
+        card.color = new Color(0.02f, 0.017f, 0.014f, 1f);
         RectTransform rect = card.rectTransform;
         rect.anchorMin = rect.anchorMax = new Vector2(0f, 0.5f);
         rect.pivot = new Vector2(0f, 0.5f);
@@ -1451,5 +1455,83 @@ public static class UiRedesign
         FitButtonWidth(button, text);
         rect.sizeDelta = new Vector2(rect.sizeDelta.x + 12f, 44f);
         return button;
+    }
+
+    // 게임 화면 가운데를 가로지르는 띠(양끝으로 흐려짐)에 라운드 결과와 라운드 시작을 알리는 배너를 만든다
+    private static void BuildRoundBanner(Transform canvas)
+    {
+        Transform old = canvas.Find("RoundBanner");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        RectTransform root = (RectTransform)new GameObject("RoundBanner", typeof(RectTransform)).transform;
+        root.SetParent(canvas, false);
+        Stretch(root);
+        CanvasGroup group = root.gameObject.AddComponent<CanvasGroup>();
+        group.alpha = 0f;
+        group.blocksRaycasts = false;
+        group.interactable = false;
+        RoundBanner banner = root.gameObject.AddComponent<RoundBanner>();
+
+        Sprite band = BandSprite("UI_Band");
+        Image strip = NewImage(root, "Band");
+        strip.sprite = band;
+        strip.color = new Color(0.01f, 0.008f, 0.006f, 1f);
+        strip.raycastTarget = false;
+        RectTransform s = strip.rectTransform;
+        s.anchorMin = new Vector2(0f, 0.5f);
+        s.anchorMax = new Vector2(1f, 0.5f);
+        s.anchoredPosition = new Vector2(0f, 40f);
+        s.sizeDelta = new Vector2(0f, 250f);
+        foreach (float y in new[] { 165f, -85f })
+        {
+            Image line = NewImage(root, y > 0f ? "TopLine" : "BottomLine");
+            line.sprite = band;
+            line.color = new Color(Gold.r, Gold.g, Gold.b, 0.55f);
+            line.raycastTarget = false;
+            RectTransform l = line.rectTransform;
+            l.anchorMin = new Vector2(0.2f, 0.5f);
+            l.anchorMax = new Vector2(0.8f, 0.5f);
+            l.anchoredPosition = new Vector2(0f, y);
+            l.sizeDelta = new Vector2(0f, 1f);
+        }
+
+        RectTransform titleRoot = (RectTransform)new GameObject("TitleRoot", typeof(RectTransform)).transform;
+        titleRoot.SetParent(root, false);
+        titleRoot.anchoredPosition = new Vector2(0f, 70f);
+        titleRoot.sizeDelta = new Vector2(1400f, 110f);
+        TMP_Text title = NewText(titleRoot, "Title", "ROUND WON", s_serif, 84f, Gold, 22f);
+        Stretch(title.rectTransform);
+
+        TMP_Text reason = NewText(root, "Reason", "20 AGAINST 18", s_sans, 17f, new Color(Cream.r, Cream.g, Cream.b, 0.85f), 9f);
+        reason.rectTransform.anchoredPosition = new Vector2(0f, 2f);
+        reason.rectTransform.sizeDelta = new Vector2(1200f, 30f);
+        TMP_Text chips = NewText(root, "Chips", "+12 CHIPS", s_serif, 30f, Gold, 6f);
+        chips.rectTransform.anchoredPosition = new Vector2(0f, -44f);
+        chips.rectTransform.sizeDelta = new Vector2(800f, 44f);
+
+        SerializedObject so = new SerializedObject(banner);
+        so.FindProperty("_group").objectReferenceValue = group;
+        so.FindProperty("_titleRoot").objectReferenceValue = titleRoot;
+        so.FindProperty("_title").objectReferenceValue = title;
+        so.FindProperty("_reason").objectReferenceValue = reason;
+        so.FindProperty("_chips").objectReferenceValue = chips;
+        so.ApplyModifiedPropertiesWithoutUndo();
+
+        Transform result = canvas.Find("GameResult");
+        root.SetSiblingIndex(result != null ? result.GetSiblingIndex() : canvas.childCount - 1);
+    }
+
+    // 가운데가 짙고 양끝으로 갈수록 투명해지는 가로 띠 스프라이트를 만든다
+    private static Sprite BandSprite(string name)
+    {
+        const int w = 256;
+        Texture2D texture = new Texture2D(w, 4, TextureFormat.RGBA32, false);
+        for (int x = 0; x < w; x++)
+        {
+            float t = Mathf.Abs(x / (w - 1f) * 2f - 1f);
+            float k = Mathf.Clamp01((t - 0.55f) / 0.45f);
+            float a = 1f - k * k * (3f - 2f * k);
+            for (int y = 0; y < 4; y++) texture.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+        }
+        return SaveSprite(texture, name, Vector4.zero);
     }
 }

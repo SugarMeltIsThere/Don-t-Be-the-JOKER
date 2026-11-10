@@ -13,6 +13,8 @@ https://creativecommons.org/publicdomain/zero/1.0/
     Table/metalClick, Table/cloth2, Table/cloth3
   Interface Sounds      https://kenney.nl/assets/interface-sounds
     UI/tick_002, UI/click_002, UI/select_001
+  Impact Sounds         https://kenney.nl/assets/impact-sounds
+    Table/impactPunch_heavy_000..002
 
 ------------------------------------------------------------
 Freesound - CC0 1.0 (public domain, credit optional)

@@ -17,6 +17,7 @@ public class SoundManager : MonoBehaviour
     [SerializeField] private AudioClip[] _whoosh;
     [SerializeField] private AudioClip[] _magnifier;
     [SerializeField] private AudioClip[] _tick;
+    [SerializeField] private AudioClip[] _joker;
     [SerializeField] private AudioClip _ambience;
 
     [Header("Mix")]
@@ -25,6 +26,7 @@ public class SoundManager : MonoBehaviour
     [SerializeField] private float _pitchJitter = 0.05f;
     [SerializeField] private float _flashShineDelay = 0.3f;
     [SerializeField] private float _chipVolume = 0.45f;
+    [SerializeField] private float _jokerSoundDelay = 0.5f;
     [SerializeField] private TurnTimer _turnTimer;
 
     private readonly AudioSource[] _sources = new AudioSource[SourceCount];
@@ -55,6 +57,7 @@ public class SoundManager : MonoBehaviour
         _gm.RoundRevealed += OnRoundRevealed;
         _gm.ItemUsed += OnItemUsed;
         _gm.BellRung += OnBellRung;
+        _gm.JokerDrawn += OnJokerDrawn;
         _gm.StateChanged += OnStateChanged;
         if (_turnTimer != null) _turnTimer.WarningSecond += OnWarningSecond;
         _lastPlayer = _gm.CurrentPlayer;
@@ -69,6 +72,7 @@ public class SoundManager : MonoBehaviour
         _gm.RoundRevealed -= OnRoundRevealed;
         _gm.ItemUsed -= OnItemUsed;
         _gm.BellRung -= OnBellRung;
+        _gm.JokerDrawn -= OnJokerDrawn;
         _gm.StateChanged -= OnStateChanged;
     }
 
@@ -81,6 +85,9 @@ public class SoundManager : MonoBehaviour
 
     // 칩 한 개가 더미에 내려앉을 때 소리를 낸다
     public void PlayChip() => Play(_chip, _chipVolume);
+
+    // 누군가 조커를 뽑으면 카드가 앞면으로 뒤집힐 즈음 묵직한 충격음을 낸다
+    private void OnJokerDrawn(ActivePlayer seat) => StartCoroutine(PlayLater(_joker, _jokerSoundDelay, 1f));
 
     // 누군가 종을 누르면 종소리를 낸다
     private void OnBellRung(ActivePlayer seat) => Play(_bell, 0.9f);

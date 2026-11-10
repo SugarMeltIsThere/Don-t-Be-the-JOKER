@@ -335,10 +335,11 @@
       "url": "https://packages.unity.com"
     },
     "com.veriorpies.parrelsync": {
-      "version": "file:C:/Users/이찬호/Downloads/ParrelSync-master/ParrelSync-master/ParrelSync",
+      "version": "https://github.com/VeriorPies/ParrelSync.git?path=/ParrelSync",
       "depth": 0,
-      "source": "local",
-      "dependencies": {}
+      "source": "git",
+      "dependencies": {},
+      "hash": "a122dc90cbe2d4cc2669ddad00b12b3917ef934b"
     },
     "com.whinarn.unitymeshsimplifier": {
       "version": "https://github.com/Whinarn/UnityMeshSimplifier.git",

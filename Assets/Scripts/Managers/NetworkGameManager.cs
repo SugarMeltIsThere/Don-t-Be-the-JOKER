@@ -149,6 +149,16 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
         if (_spawned) RPC_Bell((byte)seat);
     }
 
+    // 게스트에 조커를 뽑은 자리를 알린다(카드를 보낸 뒤라 순서가 지켜진다)
+    public void SendJoker(ActivePlayer seat)
+    {
+        if (_spawned) RPC_Joker((byte)seat);
+    }
+
+    // 게스트에서 조커를 공개한다
+    [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
+    private void RPC_Joker(byte seat) => GameManager.Instance.MirrorJoker((ActivePlayer)seat);
+
     // 게스트에서 종소리를 낸다
     [Rpc(RpcSources.StateAuthority, RpcTargets.Proxies)]
     private void RPC_Bell(byte seat) => GameManager.Instance.MirrorBell((ActivePlayer)seat);

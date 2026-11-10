@@ -15,7 +15,7 @@ public class DebugCheats : MonoBehaviour
         go.AddComponent<DebugCheats>();
     }
 
-    // 호스트에서 기능 키로 아이템 지급과 에이스 쌓기를 실행한다
+    // 호스트에서 기능 키로 아이템 지급, 에이스 쌓기, 다음 카드 조커를 실행한다
     private void Update()
     {
         Keyboard keyboard = Keyboard.current;
@@ -27,6 +27,7 @@ public class DebugCheats : MonoBehaviour
         if (keyboard.f2Key.wasPressedThisFrame) gm.DebugGiveItemToBoth(ItemType.Flash);
         if (keyboard.f3Key.wasPressedThisFrame) gm.DebugGiveItemToBoth(ItemType.Bribe);
         if (keyboard.f4Key.wasPressedThisFrame) gm.DebugStackAces(StackedAces);
+        if (keyboard.f5Key.wasPressedThisFrame) gm.DebugStackJoker();
     }
 }
 #endif

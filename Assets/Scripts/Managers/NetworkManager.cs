@@ -29,6 +29,7 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public CharacterType GuestCharacter { get; private set; } = CharacterType.Queen;
 
     public string PendingGameResultText { get; set; }
+    public string PendingLobbyNotice { get; set; }
 
     public ShutdownReason LastFailure { get; private set; }
 
@@ -110,19 +111,12 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
     public Task<bool> JoinRoomAsync(string roomCode) =>
         StartSessionAsync(GameMode.Client, roomCode, null);
 
-    // 세션을 시작하고 성공 여부를 반환한다(로비에 있는 러너는 끊지 않고 그대로 방 접속에 쓴다)
+    // 세션을 시작하고 성공 여부를 반환한다(로비 연결을 닫을 때 Fusion이 남기는 무해한 오류로 개발 콘솔이 열리면 닫는다)
     private async Task<bool> StartSessionAsync(GameMode mode, string roomCode, string roomTitle)
     {
-        if (_runner != null && _mode == Mode.Lobby && _runner.IsCloudReady)
-        {
-            _mode = Mode.Session;
-            _runner.gameObject.name = $"NetworkRunner ({Mode.Session})";
-        }
-        else
-        {
-            await ShutdownRunnerAsync();
-            _runner = CreateRunner(Mode.Session);
-        }
+        await ShutdownRunnerAsync();
+        Debug.developerConsoleVisible = false;
+        _runner = CreateRunner(Mode.Session);
         _localRoomTitle = roomTitle ?? "";
         NetworkSceneManagerDefault sceneManager = _runner.gameObject.AddComponent<NetworkSceneManagerDefault>();
         int sceneIndex = SceneManager.GetActiveScene().buildIndex;
@@ -140,7 +134,11 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
             args.SessionProperties = new Dictionary<string, SessionProperty> { { RoomTitleKey, roomTitle } };
 
         StartGameResult result = await _runner.StartGame(args);
-        if (result.Ok) return true;
+        if (result.Ok)
+        {
+            Debug.developerConsoleVisible = false;
+            return true;
+        }
 
         LastFailure = result.ShutdownReason;
         Debug.LogWarning($"[네트워크] 방 {mode} 실패: {result.ShutdownReason}");
@@ -156,9 +154,10 @@ public class NetworkManager : MonoBehaviour, INetworkRunnerCallbacks
         SceneManager.LoadScene(_gameSceneIndex);
     }
 
-    // 방을 나가 로비 씬으로 이동한다
-    public async void LeaveToLobby()
+    // 방을 나가 로비 씬을 새로 불러온다(방이 닫히며 사라진 대기실 오브젝트를 되살리려고), 알릴 말이 있으면 로비에서 보이게 남긴다
+    public async void LeaveToLobby(string notice = null)
     {
+        PendingLobbyNotice = notice;
         await ShutdownRunnerAsync();
         SceneManager.LoadScene(_lobbySceneIndex);
     }

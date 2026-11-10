@@ -26,6 +26,7 @@ public static class SoundSetup
             SetClips(so, "_whoosh", "Cards/card-shove-");
             SetClips(so, "_magnifier", "Table/cloth");
             SetClips(so, "_tick", "UI/tick_");
+            SetClips(so, "_joker", "Table/impactPunch_heavy_");
             so.FindProperty("_ambience").objectReferenceValue = null;
             if (so.FindProperty("_turnTimer").objectReferenceValue == null)
                 so.FindProperty("_turnTimer").objectReferenceValue = Object.FindFirstObjectByType<TurnTimer>(FindObjectsInactive.Include);

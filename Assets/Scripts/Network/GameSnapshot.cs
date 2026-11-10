@@ -21,6 +21,8 @@ public struct GameSnapshot : INetworkStruct
     public byte PendingItem;
     public byte CutP1, CutP2;
     public byte Surrendered;
+    public byte ResultWinner, ResultOutcome;
+    public int ResultGain, ResultLoss;
 
     // 카드를 한 바이트로 압축한다(없으면 0)
     public static byte PackCard(Card card) => card == null ? (byte)0 : (byte)((int)card.Rank * 4 + (int)card.Suit);
@@ -62,6 +64,7 @@ public interface IGameNet
     void SendOpponentAces(int mask);
     void SendItemUsed(ActivePlayer seat, ItemType type);
     void SendBell(ActivePlayer seat);
+    void SendJoker(ActivePlayer seat);
 
     void RequestUseItem(ItemType type);
     void RequestDiscard(int discardIndex);
