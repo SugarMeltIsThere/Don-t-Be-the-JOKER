@@ -1,4 +1,4 @@
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if DEVELOPMENT_BUILD || UNITY_EDITOR || DBTJ_DEMO
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -6,7 +6,7 @@ public class DebugCheats : MonoBehaviour
 {
     private const int StackedAces = 4;
 
-    // 개발 빌드와 에디터에서 테스트 키 처리기를 하나 만든다
+    // 개발 빌드, 에디터, 시연용 빌드에서 테스트 키 처리기를 하나 만든다
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void Create()
     {

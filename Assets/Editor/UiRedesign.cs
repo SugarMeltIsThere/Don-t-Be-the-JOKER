@@ -1151,15 +1151,17 @@ public static class UiRedesign
         Hairline(panel, "TitleLine", new Vector2(0f, 186f), 80f);
 
         Sprite knob = FrameSprite("UI_Knob", Color.white, new Color(0, 0, 0, 0), 32f);
-        (Slider volume, TMP_Text volumeValue) = SettingRow(panel, "Volume", "VOLUME", 90f, knob);
-        (Slider brightness, TMP_Text brightnessValue) = SettingRow(panel, "Brightness", "BRIGHTNESS", 10f, knob);
+        (Slider volume, TMP_Text volumeValue) = SettingRow(panel, "Volume", "MASTER", 130f, knob);
+        (Slider music, TMP_Text musicValue) = SettingRow(panel, "Music", "MUSIC", 70f, knob);
+        (Slider effects, TMP_Text effectsValue) = SettingRow(panel, "Effects", "EFFECTS", 10f, knob);
+        (Slider brightness, TMP_Text brightnessValue) = SettingRow(panel, "Brightness", "BRIGHTNESS", -50f, knob);
 
         TMP_Text displayTitle = NewText(panel, "DisplayLabel", "DISPLAY", s_sans, 15f, Dim, 6f);
         displayTitle.alignment = TextAlignmentOptions.MidlineLeft;
-        Left(displayTitle.rectTransform, -300f, -70f, 200f, 40f);
-        Button display = CenterButton(panel, "DisplayButton", "FULLSCREEN", -70f);
+        Left(displayTitle.rectTransform, -300f, -120f, 200f, 40f);
+        Button display = CenterButton(panel, "DisplayButton", "FULLSCREEN", -120f);
         RectTransform displayRect = (RectTransform)display.transform;
-        displayRect.anchoredPosition = new Vector2(60f, -70f);
+        displayRect.anchoredPosition = new Vector2(60f, -120f);
         GameObject fullscreenLabel = display.GetComponentInChildren<TMP_Text>(true).gameObject;
         GameObject windowedLabel = Object.Instantiate(fullscreenLabel, fullscreenLabel.transform.parent);
         windowedLabel.name = "WindowedLabel";
@@ -1171,7 +1173,7 @@ public static class UiRedesign
         GameObject confirmLabel = null;
         if (inGame)
         {
-            surrender = CenterButton(panel, "SurrenderButton", "SURRENDER", -170f);
+            surrender = CenterButton(panel, "SurrenderButton", "SURRENDER", -210f);
             surrenderLabel = surrender.GetComponentInChildren<TMP_Text>(true).gameObject;
             GameObject confirm = Object.Instantiate(surrenderLabel, surrenderLabel.transform.parent);
             confirm.name = "ConfirmLabel";
@@ -1181,7 +1183,7 @@ public static class UiRedesign
             confirm.SetActive(false);
             confirmLabel = confirm;
         }
-        Button close = CenterButton(panel, "CloseButton", "CLOSE", inGame ? -250f : -170f);
+        Button close = CenterButton(panel, "CloseButton", "CLOSE", inGame ? -290f : -210f);
 
         Button open = inGame ? GameMenuButton(canvas) : LobbyMenuButtons(canvas);
         if (inGame)
@@ -1196,6 +1198,10 @@ public static class UiRedesign
         so.FindProperty("_panel").objectReferenceValue = panel.gameObject;
         so.FindProperty("_volume").objectReferenceValue = volume;
         so.FindProperty("_volumeValue").objectReferenceValue = volumeValue;
+        so.FindProperty("_music").objectReferenceValue = music;
+        so.FindProperty("_musicValue").objectReferenceValue = musicValue;
+        so.FindProperty("_effects").objectReferenceValue = effects;
+        so.FindProperty("_effectsValue").objectReferenceValue = effectsValue;
         so.FindProperty("_brightness").objectReferenceValue = brightness;
         so.FindProperty("_brightnessValue").objectReferenceValue = brightnessValue;
         so.FindProperty("_close").objectReferenceValue = close;

@@ -61,7 +61,7 @@ public class Deck
     // 다음에 뽑힐 카드를 덱 맨 위에 올린다(튜토리얼의 정해진 패)
     public void PushTop(Card card) => _cards.Add(card);
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
+#if DEVELOPMENT_BUILD || UNITY_EDITOR || DBTJ_DEMO
     // 테스트용으로 다음에 뽑힐 카드를 덱 맨 위에 올린다
     public void DebugPushTop(Card card) => _cards.Add(card);
 #endif

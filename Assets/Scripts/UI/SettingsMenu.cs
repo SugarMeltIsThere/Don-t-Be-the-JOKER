@@ -8,6 +8,10 @@ public class SettingsMenu : MonoBehaviour
     [SerializeField] private GameObject _panel;
     [SerializeField] private Slider _volume;
     [SerializeField] private TMP_Text _volumeValue;
+    [SerializeField] private Slider _music;
+    [SerializeField] private TMP_Text _musicValue;
+    [SerializeField] private Slider _effects;
+    [SerializeField] private TMP_Text _effectsValue;
     [SerializeField] private Slider _brightness;
     [SerializeField] private TMP_Text _brightnessValue;
     [SerializeField] private Button _display;
@@ -31,6 +35,8 @@ public class SettingsMenu : MonoBehaviour
         if (_open != null) _open.onClick.AddListener(Open);
         if (_surrender != null) _surrender.onClick.AddListener(OnSurrender);
         _volume.onValueChanged.AddListener(OnVolumeChanged);
+        if (_music != null) _music.onValueChanged.AddListener(OnMusicChanged);
+        if (_effects != null) _effects.onValueChanged.AddListener(OnEffectsChanged);
         _brightness.onValueChanged.AddListener(OnBrightnessChanged);
         Close();
     }
@@ -55,8 +61,12 @@ public class SettingsMenu : MonoBehaviour
         {
             _volume.SetValueWithoutNotify(settings.Volume);
             _brightness.SetValueWithoutNotify(settings.Brightness);
+            if (_music != null) _music.SetValueWithoutNotify(settings.Music);
+            if (_effects != null) _effects.SetValueWithoutNotify(settings.Effects);
         }
         ShowValue(_volumeValue, _volume.value);
+        if (_music != null) ShowValue(_musicValue, _music.value);
+        if (_effects != null) ShowValue(_effectsValue, _effects.value);
         ShowValue(_brightnessValue, _brightness.value);
         ShowDisplayMode(Screen.fullScreenMode != FullScreenMode.Windowed);
         SetConfirming(false);
@@ -80,6 +90,20 @@ public class SettingsMenu : MonoBehaviour
     {
         if (GameSettings.Instance != null) GameSettings.Instance.SetVolume(value);
         ShowValue(_volumeValue, value);
+    }
+
+    // 배경 음악 음량을 바꾼다
+    private void OnMusicChanged(float value)
+    {
+        if (GameSettings.Instance != null) GameSettings.Instance.SetMusic(value);
+        ShowValue(_musicValue, value);
+    }
+
+    // 효과음 음량을 바꾼다
+    private void OnEffectsChanged(float value)
+    {
+        if (GameSettings.Instance != null) GameSettings.Instance.SetEffects(value);
+        ShowValue(_effectsValue, value);
     }
 
     // 밝기를 바꾼다

@@ -6,7 +6,11 @@ public class GameSettings : MonoBehaviour
 {
     private const string VolumeKey = "settings.volume";
     private const string BrightnessKey = "settings.brightness";
+    private const string MusicKey = "settings.music";
+    private const string EffectsKey = "settings.effects";
     private const float DefaultVolume = 0.8f;
+    private const float DefaultMusic = 0.7f;
+    private const float DefaultEffects = 1f;
     private const float DefaultBrightness = 0.5f;
     private const float MaxGammaShift = 0.35f;
     private const int VolumePriority = 100;
@@ -15,6 +19,11 @@ public class GameSettings : MonoBehaviour
 
     public float Volume { get; private set; }
     public float Brightness { get; private set; }
+    public float Music { get; private set; }
+    public float Effects { get; private set; }
+
+    public static float EffectsScale => Instance != null ? Instance.Effects : 1f;
+    public static float MusicScale => Instance != null ? Instance.Music : 1f;
 
     private LiftGammaGain _gamma;
     private bool _focused = true;
@@ -39,7 +48,12 @@ public class GameSettings : MonoBehaviour
         _gamma = profile.Add<LiftGammaGain>(true);
         volume.sharedProfile = profile;
 
+#if DBTJ_DEMO
+        Application.runInBackground = true;
+#endif
         SetVolume(PlayerPrefs.GetFloat(VolumeKey, DefaultVolume));
+        SetMusic(PlayerPrefs.GetFloat(MusicKey, DefaultMusic));
+        SetEffects(PlayerPrefs.GetFloat(EffectsKey, DefaultEffects));
         SetBrightness(PlayerPrefs.GetFloat(BrightnessKey, DefaultBrightness));
     }
 
@@ -49,6 +63,20 @@ public class GameSettings : MonoBehaviour
         Volume = Mathf.Clamp01(value);
         ApplyVolume();
         PlayerPrefs.SetFloat(VolumeKey, Volume);
+    }
+
+    // 배경 음악 음량(0~1)을 정하고 기억한다(음악 재생기가 읽어 쓴다)
+    public void SetMusic(float value)
+    {
+        Music = Mathf.Clamp01(value);
+        PlayerPrefs.SetFloat(MusicKey, Music);
+    }
+
+    // 효과음 음량(0~1)을 정하고 기억한다(효과음과 버튼 소리가 읽어 쓴다)
+    public void SetEffects(float value)
+    {
+        Effects = Mathf.Clamp01(value);
+        PlayerPrefs.SetFloat(EffectsKey, Effects);
     }
 
     // 밝기(0~1, 가운데가 기본)를 감마로 바꿔 화면 중간 밝기를 올리거나 내리고 기억한다
@@ -66,8 +94,12 @@ public class GameSettings : MonoBehaviour
         ApplyVolume();
     }
 
-    // 포커스 상태에 맞춰 전체 음량을 적용한다
+    // 포커스 상태에 맞춰 전체 음량을 적용한다(시연용 빌드는 녹화 중 포커스가 빠져도 소리를 유지한다)
+#if DBTJ_DEMO
+    private void ApplyVolume() => AudioListener.volume = Volume;
+#else
     private void ApplyVolume() => AudioListener.volume = _focused ? Volume : 0f;
+#endif
 
     // 바꾼 설정을 디스크에 저장한다
     public void Save() => PlayerPrefs.Save();

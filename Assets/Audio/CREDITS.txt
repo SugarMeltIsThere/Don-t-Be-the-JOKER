@@ -24,6 +24,19 @@ Freesound - CC0 1.0 (public domain, credit optional)
                         (high-quality preview file of the original upload)
 
 ------------------------------------------------------------
+Music and jingles - CC0 1.0 (public domain, credit optional)
+
+  Music/moil            "Moil" by Ruskerdax (dark slow jazz, game table)
+                        https://opengameart.org/node/158878
+  Music/drunken_saloon  "Drunken Saloon" by iamoneabe (bluesy bar jazz, lobby)
+                        https://opengameart.org/node/139016
+  Jingles/jingles_SAX02, 03, 07, 10, 11, 13, 14
+                        "85 Short music jingles" by Kenney (www.kenney.nl)
+                        https://opengameart.org/node/22000
+                        Used for round win / loss / push and match win / loss.
+  Downloaded 2026-11-22.
+
+------------------------------------------------------------
 3D models
 
   Quaternius (quaternius.com) - CC0 1.0 (public domain, credit optional)

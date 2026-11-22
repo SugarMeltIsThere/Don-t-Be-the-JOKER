@@ -1045,13 +1045,13 @@ public class GameManager : MonoBehaviour
         return true;
     }
 
-#if DEVELOPMENT_BUILD || UNITY_EDITOR
-    // 테스트용으로 두 좌석에 아이템을 하나씩 주고 상태를 전송한다
+#if DEVELOPMENT_BUILD || UNITY_EDITOR || DBTJ_DEMO
+    // 테스트용으로 두 좌석에 아이템을 하나씩 주고 상태를 전송한다(시연을 위해 조커 캐릭터의 아이템 금지는 무시한다)
     public void DebugGiveItemToBoth(ItemType type)
     {
         if (IsMirror) return;
         foreach (ActivePlayer seat in new[] { ActivePlayer.Player1, ActivePlayer.Player2 })
-            if (S(seat).Items.Count < S(seat).ItemSlots) AddItem(seat, type);
+            if (S(seat).Items.Count < S(seat).ItemSlots) S(seat).Items.Add(new Item(type));
         Commit();
     }
 

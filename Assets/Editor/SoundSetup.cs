@@ -2,6 +2,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 
 public static class SoundSetup
 {
@@ -28,13 +29,18 @@ public static class SoundSetup
             SetClips(so, "_tick", "UI/tick_");
             SetClips(so, "_joker", "Table/impactPunch_heavy_");
             so.FindProperty("_ambience").objectReferenceValue = null;
+            SetNamedClips(so, "_roundWon", "Jingles/jingles_SAX10", "Jingles/jingles_SAX02");
+            SetNamedClips(so, "_roundLost", "Jingles/jingles_SAX14", "Jingles/jingles_SAX11");
+            SetNamedClips(so, "_roundPush", "Jingles/jingles_SAX03");
+            SetNamedClips(so, "_matchWon", "Jingles/jingles_SAX13");
+            SetNamedClips(so, "_matchLost", "Jingles/jingles_SAX07");
             if (so.FindProperty("_turnTimer").objectReferenceValue == null)
                 so.FindProperty("_turnTimer").objectReferenceValue = Object.FindFirstObjectByType<TurnTimer>(FindObjectsInactive.Include);
             so.ApplyModifiedPropertiesWithoutUndo();
         }
 
-        AudioClip hover = Load("UI/select_001");
-        AudioClip click = Load("UI/click_002");
+        AudioClip hover = Load("Chips/chips-stack-1");
+        AudioClip click = Load("Cards/card-place-1");
         foreach (MenuButtonFx fx in Object.FindObjectsByType<MenuButtonFx>(FindObjectsInactive.Include, FindObjectsSortMode.None))
         {
             SerializedObject so = new SerializedObject(fx);
@@ -43,8 +49,18 @@ public static class SoundSetup
             so.FindProperty("_soundVolume").floatValue = 0.35f;
             so.ApplyModifiedPropertiesWithoutUndo();
         }
+        foreach (Button button in Object.FindObjectsByType<Button>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            AddButtonSound(button, hover, click);
+        foreach (string prefabPath in new[] { "Assets/Prefabs/RoomItem.prefab", "Assets/Prefabs/AceSlot.prefab" })
+        {
+            GameObject root = PrefabUtility.LoadPrefabContents(prefabPath);
+            foreach (Button button in root.GetComponentsInChildren<Button>(true)) AddButtonSound(button, hover, click);
+            PrefabUtility.SaveAsPrefabAsset(root, prefabPath);
+            PrefabUtility.UnloadPrefabContents(root);
+        }
 
         var scene = EditorSceneManager.GetActiveScene();
+        SetupMusic(scene.name.Contains("Lobby") ? "Music/drunken_saloon" : "Music/moil");
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveScene(scene);
     }
@@ -57,13 +73,14 @@ public static class SoundSetup
             string path = AssetDatabase.GUIDToAssetPath(guid);
             AudioImporter importer = (AudioImporter)AssetImporter.GetAtPath(path);
             AudioImporterSampleSettings settings = importer.defaultSampleSettings;
-            bool longClip = path.Contains("desk-bell");
-            settings.loadType = longClip ? AudioClipLoadType.CompressedInMemory : AudioClipLoadType.DecompressOnLoad;
+            bool music = path.Contains("/Music/");
+            bool longClip = path.Contains("desk-bell") || path.Contains("/Jingles/");
+            settings.loadType = music ? AudioClipLoadType.Streaming : longClip ? AudioClipLoadType.CompressedInMemory : AudioClipLoadType.DecompressOnLoad;
             settings.compressionFormat = AudioCompressionFormat.Vorbis;
-            settings.quality = 0.7f;
-            settings.preloadAudioData = true;
+            settings.quality = music ? 0.6f : 0.7f;
+            settings.preloadAudioData = !music;
             importer.defaultSampleSettings = settings;
-            importer.forceToMono = true;
+            importer.forceToMono = !music;
             importer.SaveAndReimport();
         }
     }
@@ -77,6 +94,38 @@ public static class SoundSetup
             .OrderBy(p => p)
             .Select(AssetDatabase.LoadAssetAtPath<AudioClip>)
             .ToArray();
+        SerializedProperty property = so.FindProperty(field);
+        property.arraySize = clips.Length;
+        for (int i = 0; i < clips.Length; i++)
+            property.GetArrayElementAtIndex(i).objectReferenceValue = clips[i];
+    }
+
+    // 메뉴 버튼 효과가 없는 버튼에 마우스를 올릴 때와 누를 때 소리를 붙인다
+    private static void AddButtonSound(Button button, AudioClip hover, AudioClip click)
+    {
+        if (button.GetComponent<MenuButtonFx>() != null) return;
+        ButtonSound sound = button.GetComponent<ButtonSound>();
+        if (sound == null) sound = button.gameObject.AddComponent<ButtonSound>();
+        SerializedObject so = new SerializedObject(sound);
+        so.FindProperty("_hoverSound").objectReferenceValue = hover;
+        so.FindProperty("_clickSound").objectReferenceValue = click;
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // 장면에 배경 음악 재생기(Music 오브젝트)를 하나 두고 곡을 정한다
+    private static void SetupMusic(string track)
+    {
+        MusicPlayer player = Object.FindFirstObjectByType<MusicPlayer>(FindObjectsInactive.Include);
+        if (player == null) player = new GameObject("Music").AddComponent<MusicPlayer>();
+        SerializedObject so = new SerializedObject(player);
+        so.FindProperty("_track").objectReferenceValue = Load(track);
+        so.ApplyModifiedPropertiesWithoutUndo();
+    }
+
+    // 정한 이름의 클립들을 직렬화 배열에 넣는다
+    private static void SetNamedClips(SerializedObject so, string field, params string[] names)
+    {
+        AudioClip[] clips = names.Select(Load).Where(c => c != null).ToArray();
         SerializedProperty property = so.FindProperty(field);
         property.arraySize = clips.Length;
         for (int i = 0; i < clips.Length; i++)

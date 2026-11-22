@@ -63,7 +63,7 @@ public class MenuButtonFx : MonoBehaviour, IPointerEnterHandler, IPointerExitHan
             s_audio = new GameObject("MenuSound").AddComponent<AudioSource>();
             s_audio.playOnAwake = false;
         }
-        s_audio.PlayOneShot(clip, _soundVolume);
+        s_audio.PlayOneShot(clip, _soundVolume * GameSettings.EffectsScale);
     }
 
     // 진행 정도에 맞춰 글자 위치와 표시자 투명도를 정한다

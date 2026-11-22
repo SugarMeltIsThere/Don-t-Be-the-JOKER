@@ -12,6 +12,7 @@ GameObject:
   - component: {fileID: 1987352114464551135}
   - component: {fileID: 6606557791836686151}
   - component: {fileID: 4205910043152530042}
+  - component: {fileID: 9102613531858659344}
   m_Layer: 5
   m_Name: ToggleButton
   m_TagString: Untagged
@@ -121,6 +122,21 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls: []
+--- !u!114 &9102613531858659344
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2219588159145744165}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 80a760f7e6faeba4fa099b826d335ea9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ButtonSound
+  _hoverSound: {fileID: 8300000, guid: d43b490a14e84ab4ba0abd5dc0a6cdae, type: 3}
+  _clickSound: {fileID: 8300000, guid: 934974baeeb6e5345a03eb143a392d90, type: 3}
+  _volume: 0.35
 --- !u!1 &2245004897368240935
 GameObject:
   m_ObjectHideFlags: 0

@@ -574,6 +574,7 @@ GameObject:
   - component: {fileID: 9063425850621916854}
   - component: {fileID: 6794029568561224205}
   - component: {fileID: 8547755515243054676}
+  - component: {fileID: 3644330950641814286}
   m_Layer: 5
   m_Name: JoinButton
   m_TagString: Untagged
@@ -701,6 +702,21 @@ MonoBehaviour:
   _alignLeft: 0
   _padding: 3
   _offsetY: 8
+--- !u!114 &3644330950641814286
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7678712351013778651}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 80a760f7e6faeba4fa099b826d335ea9, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ButtonSound
+  _hoverSound: {fileID: 8300000, guid: d43b490a14e84ab4ba0abd5dc0a6cdae, type: 3}
+  _clickSound: {fileID: 8300000, guid: 934974baeeb6e5345a03eb143a392d90, type: 3}
+  _volume: 0.35
 --- !u!1 &8153452149311746733
 GameObject:
   m_ObjectHideFlags: 0
