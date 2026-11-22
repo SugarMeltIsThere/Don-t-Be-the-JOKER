@@ -22,6 +22,9 @@ public class TableCamera : MonoBehaviour
     private Quaternion _focusRotation;
     private float _focusBlend;
 
+    public Vector2 Pointer => _focusing ? Vector2.zero : _pointer;
+    public bool LookingDown => _lookingDown || _focusing;
+
     // 씬에 놓인 자세를 기본 시점으로 기억한다
     private void Awake()
     {

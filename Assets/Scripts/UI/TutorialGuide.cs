@@ -13,6 +13,13 @@ public class TutorialGuide : MonoBehaviour
     private const ActivePlayer Me = ActivePlayer.Player1;
     private const ActivePlayer Bot = ActivePlayer.Player2;
     private const float BotDelay = 1.3f;
+    private const string LanguageKey = "TutorialLanguage";
+    private const float CjkSize = 23f;
+
+    private static readonly string[] KoreanFonts = { "Malgun Gothic" };
+    private static readonly string[] JapaneseFonts = { "Yu Gothic UI", "Yu Gothic", "Meiryo", "MS Gothic", "Malgun Gothic" };
+    private static TMP_FontAsset s_koreanFont;
+    private static TMP_FontAsset s_japaneseFont;
 
     private static readonly Card[] OpeningCards =
     {
@@ -32,12 +39,21 @@ public class TutorialGuide : MonoBehaviour
     [SerializeField] private Button _finish;
     [SerializeField] private Button _keepPlaying;
     [SerializeField, TextArea(2, 5)] private string[] _steps;
+    [SerializeField, TextArea(2, 5)] private string[] _stepsKorean;
+    [SerializeField, TextArea(2, 5)] private string[] _stepsJapanese;
+    [SerializeField] private Button _english;
+    [SerializeField] private Button _korean;
+    [SerializeField] private Button _japanese;
 
     private GameManager _gm;
     private Step _step;
     private int _round;
     private bool _usedMagnifier;
     private float _botAt = -1f;
+    private int _language;
+    private TMP_FontAsset _latinFont;
+    private float _latinSize;
+    private float _latinSpacing;
 
     // 튜토리얼일 때만 첫 단계를 보이고 버튼과 게임 이벤트를 연결한다
     private void Start()
@@ -53,6 +69,13 @@ public class TutorialGuide : MonoBehaviour
         _next.onClick.AddListener(Advance);
         _finish.onClick.AddListener(Finish);
         _keepPlaying.onClick.AddListener(() => _panel.SetActive(false));
+        _latinFont = _body.font;
+        _latinSize = _body.fontSize;
+        _latinSpacing = _body.lineSpacing;
+        SetupLanguageButton(_english, 0, null);
+        SetupLanguageButton(_korean, 1, KoreanFont());
+        SetupLanguageButton(_japanese, 2, JapaneseFont());
+        _language = Mathf.Clamp(PlayerPrefs.GetInt(LanguageKey, 0), 0, 2);
         Show(Step.Welcome);
     }
 
@@ -117,7 +140,7 @@ public class TutorialGuide : MonoBehaviour
         _step = step;
         _panel.SetActive(true);
         int index = (int)step;
-        _body.SetText(index < _steps.Length ? _steps[index] : string.Empty);
+        ShowText();
         _counter.SetText("{0} / {1}", index + 1, (int)Step.Done + 1);
         bool waitsForNext = step == Step.Welcome || step == Step.Shared || step == Step.Hidden || step == Step.Ace || step == Step.Items;
         _next.gameObject.SetActive(waitsForNext);
@@ -129,6 +152,64 @@ public class TutorialGuide : MonoBehaviour
             _gm.GrantItem(Me, ItemType.Magnifier);
             if (_gm.GetComponent<PracticeBot>() == null) _gm.gameObject.AddComponent<PracticeBot>();
         }
+    }
+
+    // 언어 버튼을 누르면 그 언어로 바꾸게 하고, 글자를 그 언어 글꼴로 보이게 한다
+    private void SetupLanguageButton(Button button, int language, TMP_FontAsset font)
+    {
+        if (button == null) return;
+        button.onClick.AddListener(() => SetLanguage(language));
+        if (font == null) return;
+        foreach (TMP_Text label in button.GetComponentsInChildren<TMP_Text>(true)) label.font = font;
+    }
+
+    // 언어를 바꾸고 기억한 뒤 지금 단계 글을 다시 쓴다
+    private void SetLanguage(int language)
+    {
+        _language = language;
+        PlayerPrefs.SetInt(LanguageKey, language);
+        ShowText();
+    }
+
+    // 지금 언어의 단계 글을 그 언어 글꼴과 크기로 쓰고, 고른 언어 버튼만 밝게 한다(한국어·일본어 글꼴이 없으면 영어로 보인다)
+    private void ShowText()
+    {
+        TMP_FontAsset cjk = _language == 1 ? KoreanFont() : _language == 2 ? JapaneseFont() : null;
+        string[] steps = cjk == null ? _steps : _language == 1 ? _stepsKorean : _stepsJapanese;
+        _body.font = cjk != null ? cjk : _latinFont;
+        _body.fontSize = cjk != null ? CjkSize : _latinSize;
+        _body.lineSpacing = cjk != null ? 8f : _latinSpacing;
+        int index = (int)_step;
+        _body.SetText(steps != null && index < steps.Length ? steps[index] : string.Empty);
+
+        int shown = cjk == null ? 0 : _language;
+        Highlight(_english, shown == 0);
+        Highlight(_korean, shown == 1);
+        Highlight(_japanese, shown == 2);
+    }
+
+    // 고른 언어 버튼은 밝게, 나머지는 흐리게 한다
+    private static void Highlight(Button button, bool selected)
+    {
+        if (button == null) return;
+        foreach (TMP_Text label in button.GetComponentsInChildren<TMP_Text>(true)) label.alpha = selected ? 1f : 0.4f;
+    }
+
+    // 윈도우에 깔린 한국어 글꼴로 글꼴 에셋을 한 번 만든다
+    private static TMP_FontAsset KoreanFont() => s_koreanFont != null ? s_koreanFont : s_koreanFont = SystemFont(KoreanFonts);
+
+    // 윈도우에 깔린 일본어 글꼴로 글꼴 에셋을 한 번 만든다
+    private static TMP_FontAsset JapaneseFont() => s_japaneseFont != null ? s_japaneseFont : s_japaneseFont = SystemFont(JapaneseFonts);
+
+    // 이름 목록에서 처음 찾은 시스템 글꼴로 동적 글꼴 에셋을 만든다
+    private static TMP_FontAsset SystemFont(string[] families)
+    {
+        foreach (string family in families)
+        {
+            TMP_FontAsset font = TMP_FontAsset.CreateFontAsset(family, "Regular");
+            if (font != null) return font;
+        }
+        return null;
     }
 
     // 첫 라운드의 상대: 한 장 더 받고 멈추며, 에이스는 바로 확정하고, 베팅은 따라간다(내가 설명을 볼 때까지는 기다린다)

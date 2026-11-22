@@ -34,6 +34,44 @@ public static class UiRedesign
         "That's the whole flow. One last thing: draw the joker and you lose the round. Ready for a full match?"
     };
 
+    private static readonly string[] TutorialStepsKorean =
+    {
+        "테이블에 오신 걸 환영합니다. 21을 넘지 않으면서 상대보다 21에 더 가깝게 끝내면 이깁니다. 안내에 따라 한 라운드를 해 봅시다.",
+        "먼저 서로 카드를 한 장씩 받습니다. 더 높은 카드를 받은 쪽이 첫 라운드를 먼저 시작합니다. 지켜보세요.",
+        "가운데 카드는 공용 카드입니다. 두 사람의 합계에 모두 더해집니다. 내 합계는 이름판에 나옵니다.",
+        "가장 최근에 받은 카드는 상대에게 보이지 않고, 상대의 카드도 내게 보이지 않습니다. 그래서 상대 합계에 물음표가 붙습니다.",
+        "내 차례입니다. 덱을 클릭해 카드를 받으세요.",
+        "에이스입니다. 1이나 11로 셀 수 있습니다. 카드 받기가 끝난 뒤에 정하니 기억해 두세요.",
+        "이제 상대 차례입니다. 두 사람 모두 멈출 때까지 번갈아 진행합니다.",
+        "에이스를 11로 세면 20입니다. 충분히 강하니 벨을 눌러 멈추세요.",
+        "카드 받기가 끝났습니다. 에이스를 클릭해 11로 바꾸고 CONFIRM을 누르세요.",
+        "베팅입니다. 서로 칩 1개씩 걸었습니다. RAISE를 누르고 칩 더미를 클릭해 칩을 더한 뒤 CONFIRM을 누르세요.",
+        "상대가 콜합니다. 숨긴 카드가 공개되고, 21에 가장 가까운 쪽이 판돈을 가져갑니다.",
+        "두 라운드 연속으로 지면 아이템을 받습니다. 돋보기를 하나 드릴 테니 써 보세요.",
+        "내 차례에 돋보기를 클릭하면 덱의 다음 카드를 미리 볼 수 있습니다.",
+        "본 카드를 활용해 받을지 멈출지 정하고, 이번 라운드는 혼자서 끝내 보세요.",
+        "이게 전체 흐름입니다. 마지막으로, 조커를 뽑으면 그 라운드는 바로 집니다. 정식 경기를 해 볼까요?"
+    };
+
+    private static readonly string[] TutorialStepsJapanese =
+    {
+        "テーブルへようこそ。21を超えずに、相手より21に近ければ勝ちです。ガイドに沿って1ラウンド遊んでみましょう。",
+        "まず、お互いにカードを1枚ずつ引きます。高いカードを引いた方が最初のラウンドの先攻です。見ていてください。",
+        "中央のカードは共有カードです。両方の合計に加算されます。あなたの合計はネームプレートに表示されます。",
+        "最後に引いたカードは相手には見えず、相手のカードもあなたには見えません。だから相手の合計には「?」が付きます。",
+        "あなたの番です。デッキをクリックしてカードを引きましょう。",
+        "エースです。1か11として数えられます。引き終わった後で選ぶので、覚えておいてください。",
+        "次は相手の番です。両者がスタンドするまで交互に進みます。",
+        "エースを11にすると20。十分強い手です。ベルを鳴らしてスタンドしましょう。",
+        "引くのは終わりです。エースをクリックして11に切り替え、CONFIRMを押してください。",
+        "ベッティングです。お互いチップを1枚ずつ賭けています。RAISEを押し、チップの山をクリックして追加してから、CONFIRMを押してください。",
+        "相手はコールしました。伏せたカードが公開され、21に最も近い方がポットを獲得します。",
+        "2ラウンド連続で負けるとアイテムがもらえます。試しに虫眼鏡をどうぞ。",
+        "自分の番に虫眼鏡をクリックすると、デッキの次のカードをのぞけます。",
+        "見たカードを活かして、引くかスタンドするかを決め、このラウンドを自分で終わらせましょう。",
+        "これで流れは全部です。最後にひとつ。ジョーカーを引くとそのラウンドは即負けです。本番の試合に挑みますか?"
+    };
+
     private const string RulesLeft =
         "<b>THE AIM</b>\n" +
         "Get closer to 21 than your opponent. Go over and you bust.\n" +
@@ -492,10 +530,12 @@ public static class UiRedesign
         Left(connecting.rectTransform, -840f, -380f, 520f, 40f);
         connecting.alignment = TextAlignmentOptions.MidlineLeft;
 
-        Field(lobby.Find("NickNamePanel"), -840f, 40f, "Your name");
-        LeftButton(lobby.Find("CreateButton").GetComponent<Button>(), -840f, -64f);
-        Field(lobby.Find("RoomCodePanel"), -840f, -190f, "Table code");
-        LeftButton(lobby.Find("JoinButton").GetComponent<Button>(), -840f, -314f);
+        SectionLabel(lobby, "SoloLabel", "PLAY SOLO", 124f);
+        SectionLabel(lobby, "OnlineLabel", "PLAY ONLINE", -40f);
+        Field(lobby.Find("NickNamePanel"), -840f, -118f, "Your name");
+        LeftButton(lobby.Find("CreateButton").GetComponent<Button>(), -840f, -208f);
+        Field(lobby.Find("RoomCodePanel"), -840f, -310f, "Table code");
+        LeftButton(lobby.Find("JoinButton").GetComponent<Button>(), -296f, -324f);
 
         RectTransform list = (RectTransform)lobby.Find("RoomListScrollView");
         list.anchoredPosition = new Vector2(470f, -60f);
@@ -517,6 +557,19 @@ public static class UiRedesign
         lt.sizeDelta = new Vector2(780f, 30f);
         listTitle.alignment = TextAlignmentOptions.MidlineLeft;
         Hairline(lobby, "ListLine", new Vector2(470f, 228f), 780f);
+        ListBacking(lobby, list);
+        TMP_Text empty = lobby.Find("EmptyListNotice") != null ? lobby.Find("EmptyListNotice").GetComponent<TMP_Text>() : NewText(lobby, "EmptyListNotice", "", s_sans, 18f, Dim, 8f);
+        empty.text = "NO OPEN TABLES YET  ·  CREATE ONE OR JOIN WITH A CODE";
+        empty.alignment = TextAlignmentOptions.TopLeft;
+        RectTransform er = empty.rectTransform;
+        er.anchorMin = er.anchorMax = new Vector2(0.5f, 0.5f);
+        er.pivot = new Vector2(0f, 1f);
+        er.anchoredPosition = new Vector2(88f, 200f);
+        er.sizeDelta = new Vector2(760f, 80f);
+        LobbyManager lobbyManager = Object.FindFirstObjectByType<LobbyManager>(FindObjectsInactive.Include);
+        SerializedObject lm = new SerializedObject(lobbyManager);
+        lm.FindProperty("_emptyListNotice").objectReferenceValue = empty.gameObject;
+        lm.ApplyModifiedPropertiesWithoutUndo();
 
         Modal(lobby.Find("CreateRoomPanel"), pill);
         TMP_Text error = lobby.Find("ErrorText").GetComponent<TMP_Text>();
@@ -534,9 +587,15 @@ public static class UiRedesign
         Clear(waiting.Find("RoomCodePanel").GetComponent<Image>());
         Left((RectTransform)waiting.Find("RoomCodePanel"), -840f, 286f, 600f, 36f);
         TMP_Text code = waiting.Find("RoomCodePanel/RoomCodeText").GetComponent<TMP_Text>();
-        Style(code, s_sans, 18f, Cream, 12f);
+        Style(code, s_sans, 24f, Cream, 12f);
         Stretch(code.rectTransform);
+        code.rectTransform.offsetMin = new Vector2(150f, 0f);
         code.alignment = TextAlignmentOptions.MidlineLeft;
+        Transform oldCodeLabel = waiting.Find("RoomCodePanel/CodeLabel");
+        if (oldCodeLabel != null) Object.DestroyImmediate(oldCodeLabel.gameObject);
+        TMP_Text codeLabel = NewText(waiting.Find("RoomCodePanel"), "CodeLabel", "TABLE CODE", s_sans, 16f, new Color(Gold.r, Gold.g, Gold.b, 0.85f), 12f);
+        codeLabel.alignment = TextAlignmentOptions.MidlineLeft;
+        Left(codeLabel.rectTransform, 0f, 0f, 150f, 36f, true);
         Hairline(waiting, "TitleLine", new Vector2(-690f, 256f), 300f);
 
         RectTransform players = (RectTransform)waiting.Find("PlayersPanel");
@@ -558,8 +617,17 @@ public static class UiRedesign
             RectTransform r = (RectTransform)b.transform;
             r.anchorMin = r.anchorMax = new Vector2(0f, 0.5f);
             r.pivot = new Vector2(0f, 0.5f);
-            r.anchoredPosition = new Vector2(i * 150f, 10f);
+            r.anchoredPosition = new Vector2(i * 150f - 14f, 10f);
             r.sizeDelta = new Vector2(140f, 60f);
+            TMP_Text characterLabel = null;
+            foreach (TMP_Text label in b.GetComponentsInChildren<TMP_Text>(true))
+            {
+                label.enableAutoSizing = false;
+                label.fontSize = 22f;
+                label.margin = Vector4.zero;
+                if (characterLabel == null || !string.IsNullOrEmpty(label.text)) characterLabel = label;
+            }
+            FitUnderline(b, characterLabel, false);
         }
         Image myCharacterPanel = characters.Find("MyCharacterPanel").GetComponent<Image>();
         Clear(myCharacterPanel);
@@ -587,6 +655,35 @@ public static class UiRedesign
         StyleRoomItem();
         EditorSceneManager.MarkSceneDirty(canvas.gameObject.scene);
         EditorSceneManager.SaveScene(canvas.gameObject.scene);
+    }
+
+    // 로비 왼쪽 메뉴의 묶음 제목(금색 작은 대문자와 짧은 선)을 놓는다
+    private static void SectionLabel(Transform parent, string name, string text, float y)
+    {
+        Transform old = parent.Find(name);
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        TMP_Text label = NewText(parent, name, text, s_sans, 16f, new Color(Gold.r, Gold.g, Gold.b, 0.85f), 18f);
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        Left(label.rectTransform, -840f, y, 400f, 30f);
+        Hairline(parent, name + "Line", new Vector2(-810f, y - 20f), 60f);
+    }
+
+    // 방 목록 뒤에 짙은 판(가는 금색 테두리)을 깔아 뒤 테이블과 글자를 떼어 놓는다
+    private static void ListBacking(Transform lobby, RectTransform list)
+    {
+        Transform old = lobby.Find("ListBacking");
+        if (old != null) Object.DestroyImmediate(old.gameObject);
+        Image backing = NewImage(lobby, "ListBacking");
+        backing.sprite = FrameSprite("UI_ListBacking", new Color(0.016f, 0.013f, 0.011f, 0.82f), new Color(Gold.r, Gold.g, Gold.b, 0.12f), 4f);
+        backing.type = Image.Type.Sliced;
+        backing.color = Color.white;
+        backing.raycastTarget = false;
+        RectTransform r = backing.rectTransform;
+        r.anchorMin = r.anchorMax = new Vector2(0.5f, 0.5f);
+        r.pivot = new Vector2(0.5f, 0.5f);
+        r.anchoredPosition = new Vector2(470f, 0f);
+        r.sizeDelta = new Vector2(860f, 600f);
+        backing.transform.SetSiblingIndex(list.GetSiblingIndex());
     }
 
     // 왼쪽 위에 작은 'DON'T BE', 큰 세리프 'THE JOKER', 가는 선, 기울인 한 줄 소개로 된 타이틀을 놓는다
@@ -888,7 +985,7 @@ public static class UiRedesign
     // 작은 대문자 제목 글자(본문 글꼴, 넓은 자간, 흐린 색)로 바꾼다
     private static void Label(TMP_Text text, bool leftTop = false)
     {
-        Style(text, s_sans, 13f, Dim, 12f);
+        Style(text, s_sans, 16f, Dim, 12f);
         if (!leftTop) return;
         text.alignment = TextAlignmentOptions.TopLeft;
         RectTransform r = text.rectTransform;
@@ -929,7 +1026,7 @@ public static class UiRedesign
         rect.sizeDelta = new Vector2(width, height);
     }
 
-    // 왼쪽은 짙고 오른쪽으로 갈수록 투명해지는 가로 그라데이션 스프라이트를 만든다
+    // 왼쪽 메뉴 자리는 거의 불투명하고 화면 3분의 2쯤에서 투명해지는 가로 그라데이션 스프라이트를 만든다
     private static Sprite GradientSprite(string name)
     {
         const int w = 256;
@@ -937,7 +1034,8 @@ public static class UiRedesign
         for (int x = 0; x < w; x++)
         {
             float t = x / (w - 1f);
-            float a = Mathf.Lerp(0.9f, 0f, Mathf.SmoothStep(0.25f, 0.75f, t));
+            float u = Mathf.Clamp01((t - 0.34f) / 0.38f);
+            float a = Mathf.Lerp(0.95f, 0f, u * u * (3f - 2f * u));
             for (int y = 0; y < 4; y++) texture.SetPixel(x, y, new Color(0.015f, 0.012f, 0.01f, a));
         }
         Sprite sprite = SaveSprite(texture, name, Vector4.zero);
@@ -1227,13 +1325,13 @@ public static class UiRedesign
         return button;
     }
 
-    // 로비 메뉴 아래에 AI 연습 버튼과, 맨 아래 한 줄에 튜토리얼·규칙·설정·종료 작은 버튼을 글자 폭대로 나란히 만들고 로비 관리자에 연결한다(설정 버튼을 돌려준다)
+    // 로비 'PLAY SOLO' 묶음에 튜토리얼·AI 연습 버튼과, 맨 아래 한 줄에 규칙·설정·종료 작은 버튼을 글자 폭대로 나란히 만들고 로비 관리자에 연결한다(설정 버튼을 돌려준다)
     private static Button LobbyMenuButtons(Transform canvas)
     {
         Transform lobby = canvas.Find("LobbyPanel");
-        Button practice = MenuTextButton(lobby, "PracticeButton", "PRACTICE VS AI", -840f, -420f, 22f);
+        Button tutorial = MenuTextButton(lobby, "TutorialButton", "TUTORIAL", -840f, 80f, 24f);
+        Button practice = MenuTextButton(lobby, "PracticeButton", "PRACTICE VS AI", -840f, 30f, 24f);
         float x = -840f;
-        Button tutorial = RowButton(lobby, "TutorialButton", "TUTORIAL", ref x);
         RowButton(lobby, "RulesButton", "RULES", ref x);
         Button settings = RowButton(lobby, "SettingsButton", "SETTINGS", ref x);
         Button quit = RowButton(lobby, "QuitButton", "QUIT", ref x);
@@ -1250,8 +1348,8 @@ public static class UiRedesign
     // 로비 맨 아래 줄에 작은 글자 버튼을 하나 놓고 다음 버튼 자리로 x를 옮긴다
     private static Button RowButton(Transform parent, string name, string label, ref float x)
     {
-        Button button = MenuTextButton(parent, name, label, x, -492f, 15f);
-        x += ((RectTransform)button.transform).sizeDelta.x + 14f;
+        Button button = MenuTextButton(parent, name, label, x, -470f, 18f);
+        x += ((RectTransform)button.transform).sizeDelta.x + 22f;
         return button;
     }
 
@@ -1416,6 +1514,9 @@ public static class UiRedesign
         Button next = CornerButton(card.transform, "NextButton", "NEXT", new Vector2(-32f, 24f), new Vector2(1f, 0f));
         Button finish = CornerButton(card.transform, "FinishButton", "BACK TO LOBBY", new Vector2(-32f, 24f), new Vector2(1f, 0f));
         Button keep = CornerButton(card.transform, "KeepPlayingButton", "KEEP PLAYING", new Vector2(32f, 24f), new Vector2(0f, 0f));
+        Button japanese = LanguageButton(card.transform, "JapaneseButton", "日本語", -24f);
+        Button korean = LanguageButton(card.transform, "KoreanButton", "한국어", -96f);
+        Button english = LanguageButton(card.transform, "EnglishButton", "EN", -168f);
 
         SerializedObject so = new SerializedObject(guide);
         so.FindProperty("_panel").objectReferenceValue = card.gameObject;
@@ -1427,10 +1528,35 @@ public static class UiRedesign
         SerializedProperty steps = so.FindProperty("_steps");
         steps.arraySize = TutorialSteps.Length;
         for (int i = 0; i < TutorialSteps.Length; i++) steps.GetArrayElementAtIndex(i).stringValue = TutorialSteps[i];
+        FillStrings(so.FindProperty("_stepsKorean"), TutorialStepsKorean);
+        FillStrings(so.FindProperty("_stepsJapanese"), TutorialStepsJapanese);
+        so.FindProperty("_english").objectReferenceValue = english;
+        so.FindProperty("_korean").objectReferenceValue = korean;
+        so.FindProperty("_japanese").objectReferenceValue = japanese;
         so.ApplyModifiedPropertiesWithoutUndo();
 
         Transform settings = canvas.Find("SettingsMenu");
         root.SetSiblingIndex(settings != null ? settings.GetSiblingIndex() : canvas.childCount - 1);
+    }
+
+    // 문자열 배열을 직렬화 필드에 넣는다
+    private static void FillStrings(SerializedProperty list, string[] values)
+    {
+        list.arraySize = values.Length;
+        for (int i = 0; i < values.Length; i++) list.GetArrayElementAtIndex(i).stringValue = values[i];
+    }
+
+    // 안내 카드 오른쪽 위에 놓는 고정 폭 언어 버튼을 만든다(한국어·일본어 글자는 게임에서 시스템 글꼴로 바뀐다)
+    private static Button LanguageButton(Transform parent, string name, string label, float x)
+    {
+        Button button = CornerButton(parent, name, label, new Vector2(x, -14f), new Vector2(1f, 1f));
+        ((RectTransform)button.transform).sizeDelta = new Vector2(66f, 40f);
+        foreach (TMP_Text t in button.GetComponentsInChildren<TMP_Text>(true))
+        {
+            t.fontSize = 14f;
+            t.fontSizeMax = 14f;
+        }
+        return button;
     }
 
     // 안내 카드 모서리에 붙는 작은 글자 버튼을 만든다

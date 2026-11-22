@@ -48,6 +48,7 @@ public class LobbyManager : MonoBehaviour
     private readonly List<SessionInfo> _rooms = new List<SessionInfo>();
     private bool _hasRoomList;
     [SerializeField] private GameObject _roomItemPrefab;
+    [SerializeField] private GameObject _emptyListNotice;
 
     [Header("Error")]
     [SerializeField] private TextMeshProUGUI _errorText;
@@ -302,7 +303,7 @@ public class LobbyManager : MonoBehaviour
         _confirmCreateRoomButton.interactable = !busy;
     }
 
-    // 방 목록을 기억하고 다시 그린다
+    // 방 목록을 기억하고 다시 그린다(방이 없으면 안내 문구를 보인다)
     private void OnRoomListUpdated(List<SessionInfo> rooms)
     {
         _rooms.Clear();
@@ -311,6 +312,7 @@ public class LobbyManager : MonoBehaviour
 
         foreach (Transform child in _roomListContent)
             Destroy(child.gameObject);
+        if (_emptyListNotice != null) _emptyListNotice.SetActive(rooms.Count == 0);
 
         foreach (SessionInfo room in rooms)
         {

@@ -13,6 +13,8 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
 
     private const float ReadyRetryInterval = 0.5f;
     private const float ReturnWaitSeconds = 3f;
+    private const float GazeInterval = 0.1f;
+    private const float GazeThreshold = 0.03f;
 
     [Networked, OnChangedRender(nameof(OnSnapshotChanged))]
     private GameSnapshot Snapshot { get; set; }
@@ -23,6 +25,10 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
     private bool _guestWantsReturn;
     private PlayerRef _guest;
     private float _nextReadyAt;
+    private float _nextGazeAt;
+    private Vector2 _sentPointer;
+    private bool _sentDown;
+    private TableCamera _camera;
 
     public bool IsHost => NetworkManager.Instance != null && NetworkManager.Instance.IsHost;
     public ActivePlayer LocalPlayer => IsHost ? ActivePlayer.Player1 : ActivePlayer.Player2;
@@ -65,9 +71,33 @@ public class NetworkGameManager : NetworkBehaviour, IGameNet
         _spawned = false;
     }
 
-    // 게스트가 호스트에 준비 신호를 반복해서 보낸다
+    // 내가 보는 방향(커서 위치와 내려다보기)이 바뀌었으면 0.1초마다 상대에게 보낸다
+    private void SendGaze()
+    {
+        if (Time.unscaledTime < _nextGazeAt) return;
+        _nextGazeAt = Time.unscaledTime + GazeInterval;
+        if (_camera == null && Camera.main != null) _camera = Camera.main.GetComponent<TableCamera>();
+        if (_camera == null) return;
+
+        Vector2 pointer = _camera.Pointer;
+        bool down = _camera.LookingDown;
+        if (down == _sentDown && (pointer - _sentPointer).sqrMagnitude < GazeThreshold * GazeThreshold) return;
+        _sentPointer = pointer;
+        _sentDown = down;
+        RPC_Gaze(pointer, down);
+    }
+
+    // 상대의 시선을 맞은편 인물의 고개에 반영한다
+    [Rpc(RpcSources.All, RpcTargets.All, InvokeLocal = false, Channel = RpcChannel.Unreliable)]
+    private void RPC_Gaze(Vector2 pointer, NetworkBool down)
+    {
+        if (OpponentFigure.Instance != null) OpponentFigure.Instance.SetGaze(pointer, down);
+    }
+
+    // 내 시선을 상대에게 보내고, 게스트는 호스트에 준비 신호를 반복해서 보낸다
     public override void Render()
     {
+        if (_spawned) SendGaze();
         if (Object.HasStateAuthority || Snapshot.Round > 0 || Snapshot.CutP1 != 0 || Time.unscaledTime < _nextReadyAt) return;
 
         _nextReadyAt = Time.unscaledTime + ReadyRetryInterval;

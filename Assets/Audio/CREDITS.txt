@@ -1,6 +1,6 @@
-Don't Be The Joker - Sound credits
+Don't Be The Joker - Credits
 
-All sound effects below are free for commercial use.
+All sounds and models below are free for commercial use.
 
 ------------------------------------------------------------
 Kenney (www.kenney.nl) - CC0 1.0 (public domain, credit optional)
@@ -24,4 +24,16 @@ Freesound - CC0 1.0 (public domain, credit optional)
                         (high-quality preview file of the original upload)
 
 ------------------------------------------------------------
-Downloaded 2026-11-01. Licenses were checked on each source page at download time.
+3D models
+
+  Quaternius (quaternius.com) - CC0 1.0 (public domain, credit optional)
+  Universal Base Characters (free standard version)
+    Models/Characters/Quaternius/Superhero_Male_FullBody, Superhero_Female_FullBody
+    (license file: Models/Characters/Quaternius/License_Standard.txt)
+    Used as the seated opponent silhouette.
+
+Windows system fonts (Malgun Gothic, Yu Gothic) are loaded at runtime for
+the Korean and Japanese tutorial text. They are not included in the build.
+
+------------------------------------------------------------
+Sounds downloaded 2026-11-01. Licenses were checked on each source page at download time.

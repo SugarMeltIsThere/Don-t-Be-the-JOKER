@@ -297,11 +297,12 @@ public class TableView : MonoBehaviour
         views.Clear();
     }
 
-    // 손패 안에서 i번째 카드가 놓일 자리를 가운데 정렬로 구한다(장수가 많으면 간격을 좁혀 겹치고, 뒤 카드를 살짝 높여 위에 올린다)
+    // 손패 안에서 i번째 카드가 놓일 자리를 가운데 정렬로 구한다(장수가 많으면 간격을 좁혀 겹치고, 뒤 카드를 살짝 높여 위에 올린다, 상대 손패는 테이블 좌우 대칭이 되게 내 손패와 같은 쪽부터 펼친다)
     private Vector3 SlotPosition(Transform side, int index, int count)
     {
         float spacing = count > 1 ? Mathf.Min(_cardSpacing, _maxHandSpan / (count - 1)) : _cardSpacing;
-        return side.TransformPoint(new Vector3((index - (count - 1) * 0.5f) * spacing, index * _overlapLift, 0f));
+        float mirror = side == _opponentSide ? -1f : 1f;
+        return side.TransformPoint(new Vector3((index - (count - 1) * 0.5f) * spacing * mirror, index * _overlapLift, 0f));
     }
 
     // 앞면이면 기준 방향 그대로, 뒷면이면 세로축으로 뒤집은 방향을 구한다
